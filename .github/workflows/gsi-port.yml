@@ -1,0 +1,89 @@
+name: Port GSI for A31 (SM-A315F)
+
+# Manual run: Actions -> "Port GSI for A31 (SM-A315F)" -> Run workflow, paste a GSI URL.
+# Deterministic half: download the GSI, normalise it (decompress, sparse->raw, validate the fs),
+# and build an A31 flashing kit (fastbootd/recovery steps + vbmeta-disable note). The device-fixup
+# half (making a given GSI actually boot with working RIL/sensors) is manual - see docs/06-gsi-porting.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      gsi_url:
+        description: "Direct URL to the GSI (.img / .img.xz / .img.gz / .zip / .7z)"
+        required: true
+      label:
+        description: "Short name for the output"
+        default: "gsi"
+      attach_image:
+        description: "Also convert and upload the flashable system image (large, slow)"
+        default: "false"
+
+jobs:
+  port:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: kit }
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            android-sdk-libsparse-utils xz-utils p7zip-full unzip wget \
+            erofs-utils e2fsprogs zip file
+
+      - name: Download GSI
+        run: |
+          mkdir work && cd work
+          wget --no-verbose -O gsi.src "${{ github.event.inputs.gsi_url }}"
+          ls -lh gsi.src; file gsi.src
+
+      - name: Decompress and detect
+        run: |
+          cd work
+          t="$(file -b gsi.src)"
+          case "$t" in
+            *XZ*)        xz -dc gsi.src > system.raw ;;
+            *gzip*)      gzip -dc gsi.src > system.raw ;;
+            *Zip*)       unzip -o gsi.src >/dev/null; mv "$(ls *.img | head -1)" system.raw ;;
+            *7-zip*)     7z e -y gsi.src >/dev/null; mv "$(ls *.img | head -1)" system.raw ;;
+            *)           cp gsi.src system.raw ;;
+          esac
+          if file system.raw | grep -qi "Android sparse"; then
+            simg2img system.raw system.ext && mv system.ext system.raw
+          fi
+          echo "raw size: $(du -h system.raw | cut -f1)"; file system.raw
+          if file system.raw | grep -qiE "ext[234] filesystem|EROFS"; then
+            echo "OK: looks like a valid GSI system image"
+          else
+            echo "::warning::not a recognised ext4/erofs system image - the URL may not be a raw GSI"
+          fi
+
+      - name: Build A31 flashing kit
+        run: |
+          mkdir -p out/a31-gsi
+          cp kit/gsi/flash-A31-gsi.md out/a31-gsi/README.md
+          cp kit/gsi/disable-vbmeta.md out/a31-gsi/ 2>/dev/null || true
+          echo "source: ${{ github.event.inputs.gsi_url }}" > out/a31-gsi/source.txt
+          ( cd out && zip -r9 "../a31-gsi-kit-${{ github.event.inputs.label }}.zip" a31-gsi )
+          ls -lh a31-gsi-kit-*.zip
+
+      - name: Convert to flashable sparse image (optional)
+        if: ${{ github.event.inputs.attach_image == 'true' }}
+        run: |
+          cd work
+          img2simg system.raw system.sparse.img 2>/dev/null || cp system.raw system.sparse.img
+          ls -lh system.sparse.img
+
+      - name: Upload A31 flashing kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: a31-gsi-flash-kit
+          path: a31-gsi-kit-*.zip
+
+      - name: Upload flashable system image
+        if: ${{ github.event.inputs.attach_image == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a31-system-image
+          path: work/system.sparse.img
