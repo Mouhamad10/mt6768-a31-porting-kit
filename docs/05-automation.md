@@ -54,7 +54,7 @@ candidates for a human to review and test.** Not an auto-fixer that flashes guar
 3. You flash it (recovery first, per [`../bring-up/recovery-test-method.md`](../bring-up/recovery-test-method.md)),
    and if it crashes you upload `last_kmsg` to an issue.
 4. Triage matches it against the crash database (instant known-cause answer) or drafts a candidate.
-5. You, or an AI session with the device attached, apply + test the candidate — then it becomes a new
+5. You (or a helper with the device attached) apply + test the candidate — then it becomes a new
    entry in the crash database, and the next person gets it for free.
 
 That loop is real and compounding. The "no human, guaranteed correct, auto-flashed" version is the

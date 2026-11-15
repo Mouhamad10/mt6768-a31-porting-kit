@@ -1,4 +1,4 @@
-# A31 (SM-A315F) kernel 4.19 test — phone-side work for the local Claude Code session
+# A31 (SM-A315F) kernel 4.19 test
 
 You run on the laptop that has the phone on USB (adb + Odin available). A cloud session builds the
 kernel; your job is to flash test images **only to the recovery partition**, reproduce the crash, and

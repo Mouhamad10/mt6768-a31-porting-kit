@@ -1,4 +1,4 @@
-A31 KERNEL PORT — FULL PROJECT CONTEXT (handoff for a new Claude Code session)
+A31 KERNEL PORT — FULL PROJECT CONTEXT (project handoff notes)
 ===============================================================================
 Read this whole file first. It replaces the previous conversation. Be token-efficient:
 short answers, act directly, no re-deriving facts written here.
@@ -9,7 +9,7 @@ User: ethical/own-device lab, Galaxy A31 SM-A315F, rooted (Magisk 30), Odin + ad
 laptop. Speaks Levantine Arabic. Wants: a strong modern kernel for A31 (target 5.10 GKI, later
 6.x), EROFS fully supported (all compressions), plus a vendor upgraded to run Android 16/17 ROMs
 (UN1CA One UI 8 port, GSIs) with everything working (SIM/network, SD, touch, sensors, camera...).
-The new local session CAN control the phone via adb. The previous (cloud) session could not.
+The current setup can control the phone via adb; earlier work could not.
 
 Device facts
 - SoC MT6768 (Helio P65), 4 GB RAM, eMMC, PMIC MT6358, Samsung S2MU106 (charger/FG/MUIC/PDIC),
