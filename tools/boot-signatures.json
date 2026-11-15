@@ -1,14 +1,33 @@
 {
-  "_comment": "Boot-log signature database for the MT6768 / A31 porting kit. triage-bootlog.py scans a kernel log against these. A signature matches when its regex is found. 'severity': fatal = boot-blocking; intentional = deliberate, not a bug; warning = non-fatal but real; info = harmless noise. 'fix' points to where the real fix is documented (a crash-database section or a patch) - the triage NEVER invents a patch; for an unknown fatal it only flags that a human/AI must read the trace. Add new signatures here as you find them.",
+  "_comment": "Boot-log signature database for the MT6768 / A31 porting kit. triage-bootlog.py scans a kernel log against these. 'severity': fatal = boot-blocking; intentional = deliberate, not a bug; warning = non-fatal but real; info = harmless/marker. 'fallback': true = a generic/collateral signature that is SUPPRESSED when a more specific cause is already identified (near a specific explainer, or anywhere once a non-fallback fatal is present) - keeps teardown noise and generic catchers from masquerading as the root cause. 'correlations' escalate a combination: when all listed ids fire in one log, the note is raised in the verdict. 'fix' points to a crash-database section or patch; it is \"\" when the problem is an old-kernel-vs-new-Android capability gap with NO source patch (the real fix is a newer kernel base). The triage NEVER invents a patch; for an unknown fatal it only flags that a human/AI must read the trace. Add new signatures as you find them.",
+  "correlations": [
+    {
+      "all": ["netbpf-load-fail", "bpfloader-reboot"],
+      "note": "ROOT CAUSE = the kernel eBPF gap. netbpfload could not load the tethering BPF programs AND the bpfloader init service (reboot_on_failure) force-rebooted the device (reboot,bpfloader-failed). The old 4.14 kernel lacks BPF features this Android build's bpfloader requires, so the device bootloops every boot. Real fix: a newer kernel base (5.10+ GKI). Stopgap only: remove 'reboot_on_failure' from the bpfloader init .rc so a BPF failure degrades networking instead of bricking boot (that is how the working 4.14 ROM tolerates the identical warning)."
+    },
+    {
+      "all": ["netbpf-load-fail", "clat-coordinator-abort"],
+      "note": "The system_server ClatCoordinator SIGABRT is the user-space face of the SAME missing clat (464XLAT) BPF maps - a symptom of the eBPF gap, not an independent bug."
+    }
+  ],
   "signatures": [
     {
-      "id": "sec-hard-reset",
-      "name": "Deliberate forced reset (not a crash)",
-      "regex": "sec_hard_reset_hook\\.c|hard_reset_hook_callback",
-      "severity": "intentional",
-      "meaning": "Samsung's forced-upload/ramdump hook fired because Volume-Down + Power were held. This is a user-triggered hard reset, NOT a kernel bug. If this is the only BUG() in the log, the kernel did not crash on its own.",
-      "fix": null,
-      "action": "Ignore. If you were hunting a boot crash, re-capture WITHOUT holding the keys - this event is you forcing the reset."
+      "id": "bpfloader-reboot",
+      "name": "bpfloader reboot_on_failure bootloop",
+      "regex": "reboot,bpfloader-failed",
+      "severity": "fatal",
+      "meaning": "THE boot-ending event. netbpfload failed to load the tethering eBPF programs, the bpfloader init service exited (status 38 after a ~20s wait), and because it is declared reboot_on_failure, init issued shutdown_command 'reboot,bpfloader-failed' -> HandlePowerctlMessage -> sec_reboot. The device bootloops every boot. Root cause: the 4.14 A31 kernel lacks BPF features the newer Android tethering APEX requires. This literal appears only at the real reboot decision, never on a healthy boot.",
+      "fix": "",
+      "action": "No source patch - old-kernel vs new-Android capability gap. Real fix: move to a newer kernel base (5.10+ GKI) with the BPF features the tethering APEX needs. Stopgap: remove 'reboot_on_failure' from the bpfloader init .rc so a BPF load failure degrades networking instead of bricking boot."
+    },
+    {
+      "id": "clat-coordinator-abort",
+      "name": "system_server ClatCoordinator SIGABRT",
+      "regex": "register_com_android_server_connectivity_ClatCoordinator",
+      "severity": "fatal",
+      "meaning": "system_server aborts (SIGABRT) during ClatCoordinator JNI registration (libservice-connectivity.so, via NetworkStatsServiceInitializer), repeating across zygote re-forks. This is the USER-SPACE SYMPTOM of the eBPF gap - the clat 464XLAT BPF maps never loaded - not the device-ending event itself (that is the init bpfloader reboot). The symbol appears only inside tombstone backtraces, so it is self-validating.",
+      "fix": "",
+      "action": "Downstream of the BPF load failure, not an independent root cause - resolved by fixing the bpfloader/kernel BPF gap (see bpfloader-reboot)."
     },
     {
       "id": "gpufreq-efuse",
@@ -38,20 +57,58 @@
       "action": "Not yet fixed in-tree. Either correct the io-channels/thermistor-ch* auxadc mapping for the A31, or make set_cur_state log-and-return instead of BUG() on a clearly bogus init-time trip."
     },
     {
-      "id": "netbpf-load-fail",
-      "name": "eBPF program load failure (old kernel vs new Android)",
-      "regex": "CRITICAL FAILURE LOADING BPF PROGRAMS|NetBpfLoad: .*failed to load: -|libbpf: failed to load object",
-      "severity": "warning",
-      "meaning": "Android's netbpfload could not load a mainline netd eBPF program (commonly -13 EPERM / verifier reject). The old kernel's BPF verifier/BTF support is behind what the newer Android userspace ships. Boot usually CONTINUES, but per-UID network stats, tethering and some firewall features are degraded.",
+      "id": "init-reboot-on-failure",
+      "name": "init force-reboot (reboot-reason catcher)",
+      "regex": "Got shutdown_command '|####Reboot start, reason:|reboot: Restarting system with command |sec_reboot \\(",
+      "severity": "fatal",
+      "fallback": true,
+      "meaning": "Generic high-signal catcher: init received a powerctl shutdown/reboot command and restarted the system; the reboot reason/target names the culprit. Keyed on the reboot-reason lines (one per real reboot), NOT the per-service \"has 'reboot_on_failure' option and failed\" string, which over-matches and would mis-name a teardown victim (e.g. vold) as the cause. Suppressed once a specific cause (e.g. bpfloader-reboot) is already identified; it is the fallback that names the reason when no specific signature matched.",
+      "fix": "",
+      "action": "Read the reboot reason/target to identify the failing service, then triage that service."
+    },
+    {
+      "id": "generic-panic",
+      "name": "Kernel panic - not syncing",
+      "regex": "Kernel panic - not syncing|Unable to handle kernel (NULL pointer|paging request)|Internal error: Oops",
+      "severity": "fatal",
+      "fallback": true,
+      "meaning": "A genuine fatal fault - but only counts if NOT already explained by a more specific signature (e.g. the deliberate forced reset's Oops, or a named crash above).",
+      "fix": "",
+      "action": "Read the pc:/lr: and Call trace lines, match the faulting function to the driver source (unpack Image via tools/a31_bootimg.py + gunzip), and add a new signature here with the fix once known. The triage will not invent a patch for an unknown fault - this is the point where a human or an AI reads the trace."
+    },
+    {
+      "id": "sec-hard-reset",
+      "name": "Deliberate forced reset (not a crash)",
+      "regex": "sec_hard_reset_hook\\.c:131|hard_reset_hook_callback",
+      "severity": "intentional",
+      "meaning": "Samsung's forced-upload/ramdump hook fired because Volume-Down + Power were held - a deliberate BUG() at sec_hard_reset_hook.c:131, NOT a spontaneous kernel bug. If this is the only BUG() in the log, the kernel did not crash on its own (the surrounding log shows a healthy boot). A generic Oops on the same line is suppressed so it does not masquerade as a real crash.",
       "fix": null,
-      "action": "Confirm CONFIG_BPF, CONFIG_BPF_SYSCALL, CONFIG_DEBUG_INFO_BTF, CONFIG_CGROUP_BPF and net BPF hooks are set. On a 4.x kernel some newer programs simply cannot load - that is a kernel-version gap, not a patch. It is not boot-fatal despite the scary 'DO NOT EXPECT SYSTEM TO BOOT' message."
+      "action": "Ignore. If you were hunting a boot crash, re-capture WITHOUT holding the keys - this event is you forcing the reset."
+    },
+    {
+      "id": "netbpf-load-fail",
+      "name": "netbpfload CRITICAL FAILURE loading BPF",
+      "regex": "CRITICAL FAILURE LOADING BPF PROGRAMS",
+      "severity": "warning",
+      "meaning": "netbpfload could not load the tethering/netd eBPF programs on this kernel. SURVIVABLE on its own - the working 4.14 ROM emits the identical line and still boots. It becomes FATAL only when the SAME boot also shows 'reboot,bpfloader-failed' (bpfloader is reboot_on_failure): see the correlation note. The old 'failed to load: -' regex was wrong - it matched the surviving netd.o case and MISSED the dead 'non-optional program ... failed to load' case, i.e. it flagged the healthy boot and missed the bootlooping one; now keyed on the CRITICAL-FAILURE banner.",
+      "fix": "",
+      "action": "Root fix is the kernel BPF gap - a newer kernel base (5.10+ GKI). Informational by itself; fatal only when paired with bpfloader-reboot in the same boot."
+    },
+    {
+      "id": "mtk-audio-hal-segv",
+      "name": "MTK/Samsung vendor audio HAL SIGSEGV",
+      "regex": "audio\\.primary\\.mt6768\\.so .*adev_set_parameters",
+      "severity": "warning",
+      "meaning": "Vendor audio HAL (/vendor/bin/hw/android.hardware.audio.service.mediatek) SIGSEGV null-pointer deref in adev_set_parameters, via sec_dev_set_parameters / SehDevice::setParameters - a vendor audio blob mismatched against the A31 (MT6768) platform (e.g. an A34/A32 vendor on A31). A restartable HAL crash; breaks audio, NOT boot-fatal. The regex binds library+symbol on the crash frame so it cannot fire on a benign HAL-load line that merely names the .so.",
+      "fix": "",
+      "action": "No source patch - vendor .so mismatch. Use the A31's own matching audio.primary.mt6768.so / Samsung sec audio HAL, or rebuild the vendor audio HAL against A31."
     },
     {
       "id": "tee-mmu-warn",
-      "name": "Trustonic TEE tee_mmu_create WARNING (non-fatal)",
-      "regex": "MobiCoreDriver/mmu\\.c|tee_mmu_create\\+",
+      "name": "Trustonic/MobiCore TEE tee_mmu_create WARNING",
+      "regex": "MobiCoreDriver/mmu\\.c:(76|88)|tee_mmu_create\\+0x",
       "severity": "warning",
-      "meaning": "The Trustonic (Kinibi) TEE driver warned while building an MMU table for a world-shared buffer (non-contiguous / wrong GFP). It is a WARN, not an Oops - the TEE session still opens.",
+      "meaning": "Non-fatal WARN_ON in the MediaTek MobiCore/Trustonic TEE driver's tee_mmu_create during keymaster/vaultkeeper init. Warn-and-continue - the TEE session still opens.",
       "fix": "patches/0003-a31-Trustonic-TEE-410-A31-gfp-serialisation-mt6768-T.patch",
       "action": "Related to the TEE 410 gfp/serialisation patch. Safe to ignore for boot; tighten only if keymaster/vaultkeeper actually fail."
     },
@@ -65,15 +122,6 @@
       "action": "Ignore if boot continues and keystore works. If it loops, the RPMB key state does not match the ROM - a vendor/keymaster concern, not a kernel patch."
     },
     {
-      "id": "perfmon-cap",
-      "name": "capability 'PERFMON' not supported by the kernel",
-      "regex": "capability 'PERFMON' not supported by the kernel",
-      "severity": "info",
-      "meaning": "An APEX init.rc asked for the PERFMON capability, which this older kernel does not define. Harmless - init just skips it.",
-      "fix": null,
-      "action": "No action. Cosmetic on a pre-5.8 kernel."
-    },
-    {
       "id": "exfat-sdfat-mount",
       "name": "exFAT / sdfat SD-card mount issue",
       "regex": "sdfat|exfat|texfat|Opt_defrag|time_offset",
@@ -83,14 +131,52 @@
       "action": "See the 1-byte sdfat Image patch that repoints the time_offset token."
     },
     {
-      "id": "generic-panic",
-      "name": "Kernel panic - not syncing",
-      "regex": "Kernel panic - not syncing|Unable to handle kernel (NULL pointer|paging request)|Internal error: Oops",
-      "severity": "fatal",
+      "id": "service-exit-timeout",
+      "name": "init service exit timeout / hang",
+      "regex": "exited with status [1-9][0-9]* waiting took [0-9]",
+      "severity": "warning",
       "fallback": true,
-      "meaning": "A genuine fatal fault (only counts if NOT already explained by a more specific signature above, e.g. the deliberate forced reset).",
+      "meaning": "An init service hung and exited after a long wait (e.g. 'Service bpfloader (pid 998) exited with status 38 waiting took 20.035 seconds'). This long-wait line is often the proximate trigger just before a reboot_on_failure reboot. Suppressed once a specific fatal cause is identified.",
+      "fix": "",
+      "action": "Inspect the named service and its exit status. Non-fatal by itself unless that service is reboot_on_failure."
+    },
+    {
+      "id": "apexd-flushwork-warn",
+      "name": "apexd flush_work WARN during reboot teardown",
+      "regex": "flush_work\\+0x1d4|workqueue\\.c:2925",
+      "severity": "warning",
+      "fallback": true,
+      "meaning": "Non-fatal flush_work WARN_ON, repeated many times, while apexd unmounts APEX dm-verity/loop devices DURING an already-committed reboot teardown. Shutdown collateral and log noise, not a cause.",
+      "fix": "",
+      "action": "Ignore for boot triage - symptom of the in-progress reboot."
+    },
+    {
+      "id": "perfmon-cap",
+      "name": "capability 'PERFMON' not supported by the kernel",
+      "regex": "capability 'PERFMON' not supported by the kernel",
+      "severity": "info",
+      "meaning": "An APEX init.rc asked for the PERFMON capability, which this older kernel does not define. Harmless - init just skips it.",
       "fix": null,
-      "action": "Read the pc:/lr: and Call trace lines, match the faulting function to the driver source (unpack Image via tools/a31_bootimg.py + gunzip), and add a new signature here with the fix once known. The triage will not invent a patch for an unknown fault - this is the point where a human or an AI reads the trace."
+      "action": "No action. Cosmetic on a pre-5.8 kernel."
+    },
+    {
+      "id": "unprivileged-bpf-sysctl",
+      "name": "netbpfload unprivileged_bpf_disabled sysctl touch",
+      "regex": "write\\('/proc/sys/kernel/unprivileged_bpf_disabled'",
+      "severity": "info",
+      "meaning": "netbpfload touching the unprivileged_bpf_disabled sysctl - a marker of the newer-Android-netbpfload vs older-kernel BPF-interface gap. Present on BOTH the bootlooping and the working boot, so benign by itself.",
+      "fix": "",
+      "action": "Informational marker of the kernel/userspace BPF interface gap; resolved by the same newer-kernel fix as the BPF load failures."
+    },
+    {
+      "id": "shutdown-collateral-service-death",
+      "name": "Service death during reboot teardown (collateral)",
+      "regex": "Service 'mobicore' \\(pid [0-9]+\\) received SIGABRT|Service vold has 'reboot_on_failure' option and failed",
+      "severity": "info",
+      "fallback": true,
+      "meaning": "Services dying AFTER the reboot was already decided, as init tears down all services (e.g. mobicore SIGABRT, vold SIGKILL). Collateral of the already-committed reboot, NOT independent causes. This is the vold line the naive 'reboot_on_failure ... failed' regex wrongly promoted to a culprit.",
+      "fix": "",
+      "action": "Suppressed whenever a reboot reason (bpfloader-reboot) is already present earlier in the same boot. Do not count as separate boot-fatal faults."
     }
   ]
 }

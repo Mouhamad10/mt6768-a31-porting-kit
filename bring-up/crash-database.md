@@ -148,3 +148,42 @@ BPF verifier / BTF support rejects (`-13` = EPERM / verifier reject). Despite th
 and the net BPF hooks. On a 4.x kernel some newer programs simply cannot load — that is a
 kernel-version gap, not a patchable driver bug. It is the clearest reason to move to a newer kernel
 base (5.10 GKI) for a modern Android userspace, rather than something to patch on 4.x.
+
+### C. The definitive bootloop — `reboot,bpfloader-failed` (eBPF gap)
+
+A later capture (an A34 system/vendor on the A31) pinned down exactly how a modern Android dies on
+the 4.14 kernel. This supersedes the vaguer note in B.
+
+**Signature (console ring):**
+```
+netbpfload: non-optional program schedcls_tether_downstream6_ether failed to load
+NetBpfLoad: === CRITICAL FAILURE LOADING BPF PROGRAMS ===
+init: Service bpfloader (pid 998) exited with status 38 waiting took 20.035 seconds
+init: Service bpfloader has 'reboot_on_failure' option and failed, shutting down system.
+init: ####Reboot start, reason: reboot,bpfloader-failed
+reboot: Restarting system with command 'bpfloader-failed'  ->  sec_reboot (0, bpfloader-failed)
+```
+
+**Signature (pmsg/tombstone ring, same boot):**
+```
+*** system_server native crash occurred ***
+#01 register_com_android_server_connectivity_ClatCoordinator(...)   (libservice-connectivity.so)
+    -> NetworkStatsServiceInitializer.<init> -> abort (SIGABRT), repeating across zygote re-forks
+```
+
+**Cause:** the 4.14 kernel's eBPF verifier/feature set cannot load the newer Android tethering APEX's
+BPF programs. `bpfloader` is declared `reboot_on_failure`, so when it exits non-zero init force-reboots
+with reason `bpfloader-failed` — a guaranteed bootloop. The `system_server` ClatCoordinator `SIGABRT`
+is the **same** missing clat (464XLAT) BPF maps seen from user space. The vendor audio-HAL `SIGSEGV`
+in the same log is an unrelated A34/A32-vendor-on-A31 mismatch, not boot-fatal.
+
+**Decisive proof it is the `reboot_on_failure` flag, not the BPF warning:** the working 4.14 ROM
+prints the identical `CRITICAL FAILURE LOADING BPF PROGRAMS` line and still boots, because its
+`bpfloader` is not `reboot_on_failure`.
+
+**Status / fix:** no source patch — an old-kernel-vs-new-Android capability gap. The real fix is a
+**newer kernel base (5.10+ GKI)** with the BPF features the tethering APEX needs; this is the single
+strongest argument for the 5.10 move. The only 4.14 stopgap is to remove `reboot_on_failure` from the
+`bpfloader` `.rc`, which lets the device boot with broken tethering/clat instead of bricking. The
+[boot-log triage](boot-log-signatures.md) tool encodes this as the `bpfloader-reboot` /
+`netbpf-load-fail` / `clat-coordinator-abort` signatures plus a same-boot correlation rule.
