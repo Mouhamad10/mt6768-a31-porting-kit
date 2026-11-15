@@ -1,0 +1,94 @@
+name: Build MT6768 kernel -> flashable ZIP
+
+# Manual run: Actions tab -> "Build MT6768 kernel -> flashable ZIP" -> Run workflow.
+# Builds Image.gz from any MT6768 kernel source and packages it with AnyKernel3 into a
+# TWRP-flashable ZIP (uploaded as an artifact). AnyKernel3 swaps only the kernel into the
+# existing boot image on-device, so no stock boot.img is needed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_repo:
+        description: "Kernel git URL"
+        default: "https://github.com/mt6768-dev/android_kernel_xiaomi_fire"
+      kernel_ref:
+        description: "Branch, tag or commit"
+        default: "9937de9f6e23641ffaae60b57fcaf7f5b610b202"
+      defconfig:
+        description: "defconfig name (must exist in arch/arm64/configs after patches)"
+        default: "a31_defconfig"
+      apply_kit_patches:
+        description: "Apply this repo's patches/ stack (true/false)"
+        default: "true"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout porting kit
+        uses: actions/checkout@v4
+        with:
+          path: kit
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang lld llvm make bc flex bison libssl-dev libelf-dev \
+            cpio lz4 xz-utils zip device-tree-compiler \
+            gcc-aarch64-linux-gnu
+
+      - name: Free up disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
+          df -h /
+
+      - name: Fetch kernel source
+        run: |
+          git clone --depth 1 "${{ github.event.inputs.kernel_repo }}" kernel || {
+            git clone "${{ github.event.inputs.kernel_repo }}" kernel
+          }
+          cd kernel
+          git fetch --depth 1 origin "${{ github.event.inputs.kernel_ref }}" || true
+          git checkout -f "${{ github.event.inputs.kernel_ref }}" || git checkout -f FETCH_HEAD
+
+      - name: Apply A31 patch stack
+        if: ${{ github.event.inputs.apply_kit_patches == 'true' }}
+        run: |
+          cd kernel
+          git config user.email ci@local
+          git config user.name ci
+          git config core.autocrlf false
+          cp ../kit/configs/a31_defconfig arch/arm64/configs/ 2>/dev/null || true
+          git am --keep-cr --whitespace=nowarn ../kit/patches/*.patch
+
+      - name: Build Image.gz
+        run: |
+          cd kernel
+          export ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-
+          export KCFLAGS="-Werror=implicit-function-declaration -Werror=int-conversion -Werror=incompatible-pointer-types -Werror=return-type -Wno-unused-variable -Wno-unused-function -Wno-format"
+          make O=out "${{ github.event.inputs.defconfig }}"
+          make O=out -j"$(nproc)" Image.gz
+          ls -l out/arch/arm64/boot/Image.gz
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth 1 https://github.com/osm0sis/AnyKernel3 ak3
+          cp kit/AnyKernel3/anykernel.sh ak3/anykernel.sh
+          cp kernel/out/arch/arm64/boot/Image.gz ak3/Image.gz
+          rm -rf ak3/.git ak3/.github
+          cd ak3
+          zip -r9 ../A31-kernel-$(date +%Y%m%d-%H%M).zip . -x '*.git*'
+          ls -l ../*.zip
+
+      - name: Upload flashable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: a31-kernel-flashable-zip
+          path: "*.zip"
+
+      - name: Upload raw Image.gz
+        uses: actions/upload-artifact@v4
+        with:
+          name: a31-Image.gz
+          path: kernel/out/arch/arm64/boot/Image.gz
