@@ -1,0 +1,661 @@
+From adce5b1f6d83981f47f4bc041fecc80d2b4a8588 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 09:52:39 +0000
+Subject: [PATCH 14/29] a31: eMMC on 4.19 core (no HW CQ, 4.19 crypto glue,
+ mmc_get_card ctx), A31 PMIC DLPT bring-up config, disable auto-comment
+
+---
+ arch/arm64/configs/a31_4.19.fragment          |  2 +
+ arch/arm64/configs/a31_defconfig              |  4 +-
+ .../mt-plat/mt6768/include/mach/mtk_pmic.h    | 18 ++++-
+ .../pmic/mt6358/v1/pmic_throttling_dlpt.c     | 76 ++++++++-----------
+ drivers/mmc/host/mediatek/ComboA/dbg.c        | 20 ++---
+ .../host/mediatek/ComboA/mt6768/autok_dvfs.c  | 11 +--
+ .../host/mediatek/ComboA/mt6768/msdc_cust.c   |  5 +-
+ .../mmc/host/mediatek/ComboA/mtk_sd_misc.c    | 30 ++++----
+ drivers/mmc/host/mediatek/ComboA/sd.c         |  5 ++
+ .../host/mediatek/ComboA/sw-cqhci-crypto.c    |  3 +-
+ 10 files changed, 93 insertions(+), 81 deletions(-)
+
+diff --git a/arch/arm64/configs/a31_4.19.fragment b/arch/arm64/configs/a31_4.19.fragment
+index f25bb9e90..82a590af5 100644
+--- a/arch/arm64/configs/a31_4.19.fragment
++++ b/arch/arm64/configs/a31_4.19.fragment
+@@ -75,3 +75,5 @@ CONFIG_ALWAYS_PERMISSIVE=y
+ CONFIG_STACKPROTECTOR=y
+ CONFIG_STACKPROTECTOR_STRONG=y
+ CONFIG_A31_LEGACY_TIMER_API=y
++# CONFIG_MTK_EMMC_HW_CQ is not set
++# CONFIG_SEC_DEBUG_AUTO_COMMENT is not set
+diff --git a/arch/arm64/configs/a31_defconfig b/arch/arm64/configs/a31_defconfig
+index d95119ace..968f3fe4e 100644
+--- a/arch/arm64/configs/a31_defconfig
++++ b/arch/arm64/configs/a31_defconfig
+@@ -4030,7 +4030,6 @@ CONFIG_MTK_EMMC_SUPPORT=y
+ CONFIG_MTK_EMMC_CACHE=y
+ CONFIG_MTK_EMMC_SUPPORT_OTP=y
+ # CONFIG_MTK_EMMC_CQ_SUPPORT is not set
+-CONFIG_MTK_EMMC_HW_CQ=y
+ # CONFIG_MMC_ARMMMCI is not set
+ # CONFIG_MMC_SDHCI is not set
+ # CONFIG_MMC_SPI is not set
+@@ -4937,7 +4936,6 @@ CONFIG_SEC_DEBUG_EXTRA_INFO=y
+ CONFIG_SEC_DEBUG_HW_PARAM=y
+ CONFIG_SEC_DEBUG_LAST_KMSG=y
+ CONFIG_SEC_DEBUG_INIT_LOG=y
+-CONFIG_SEC_DEBUG_AUTO_COMMENT=y
+ CONFIG_SEC_DEBUG_HIST_LOG=y
+ # CONFIG_SEC_DEBUG_LIMIT_BACKTRACE is not set
+ CONFIG_SEC_DEBUG_INIT_EXIT_PANIC=y
+@@ -6044,3 +6042,5 @@ CONFIG_ALWAYS_PERMISSIVE=y
+ CONFIG_STACKPROTECTOR=y
+ CONFIG_STACKPROTECTOR_STRONG=y
+ CONFIG_A31_LEGACY_TIMER_API=y
++# CONFIG_MTK_EMMC_HW_CQ is not set
++# CONFIG_SEC_DEBUG_AUTO_COMMENT is not set
+diff --git a/drivers/misc/mediatek/include/mt-plat/mt6768/include/mach/mtk_pmic.h b/drivers/misc/mediatek/include/mt-plat/mt6768/include/mach/mtk_pmic.h
+index 4522adb86..d2c28b3a1 100644
+--- a/drivers/misc/mediatek/include/mt-plat/mt6768/include/mach/mtk_pmic.h
++++ b/drivers/misc/mediatek/include/mt-plat/mt6768/include/mach/mtk_pmic.h
+@@ -1,7 +1,15 @@
+-/* SPDX-License-Identifier: GPL-2.0 */
+ /*
+- * Copyright (c) 2019 MediaTek Inc.
+-*/
++ * Copyright (C) 2018 MediaTek Inc.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ */
+ 
+ #ifndef _CUST_PMIC_H_
+ #define _CUST_PMIC_H_
+@@ -10,7 +18,11 @@
+ 
+ #define LOW_POWER_LIMIT_LEVEL_1 15
+ 
++#if (CONFIG_MTK_GAUGE_VERSION == 30)
+ #define PT_DLPT_BRINGUP 0
++#else
++#define PT_DLPT_BRINGUP 1
++#endif
+ 
+ #if defined(CONFIG_FPGA_EARLY_PORTING) || PT_DLPT_BRINGUP
+ /* Define for disable low battery protect feature,
+diff --git a/drivers/misc/mediatek/pmic/mt6358/v1/pmic_throttling_dlpt.c b/drivers/misc/mediatek/pmic/mt6358/v1/pmic_throttling_dlpt.c
+index c3a8ea7f3..ef5d3d435 100644
+--- a/drivers/misc/mediatek/pmic/mt6358/v1/pmic_throttling_dlpt.c
++++ b/drivers/misc/mediatek/pmic/mt6358/v1/pmic_throttling_dlpt.c
+@@ -1,16 +1,9 @@
++/* SPDX-License-Identifier: GPL-2.0 */
+ /*
+- * Copyright (C) 2018 MediaTek Inc.
+- *
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License version 2 as
+- * published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
++ * Copyright (C) 2016 MediaTek Inc.
+  */
+ 
++
+ #include <generated/autoconf.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+@@ -32,8 +25,8 @@
+ #include "include/pmic.h"
+ #include "include/pmic_throttling_dlpt.h"
+ #include "include/pmic_auxadc.h"
+-#include <pmic_lbat_service.h>
+-#include <mt-plat/mtk_charger.h>
++#include <include/pmic_lbat_service.h>
++#include <mt-plat/v1/mtk_charger.h>
+ #include "mtk_devinfo.h"
+ 
+ #if defined(CONFIG_MTK_BASE_POWER)
+@@ -44,7 +37,7 @@
+ #define CONFIG_MTK_GAUGE_VERSION 0
+ #endif
+ #if (CONFIG_MTK_GAUGE_VERSION == 30)
+-#include <mt-plat/mtk_battery.h>
++#include <mt-plat/v1/mtk_battery.h>
+ #include <mach/mtk_battery_property.h>
+ #include <linux/reboot.h>
+ #include <mtk_battery_internal.h>
+@@ -96,9 +89,9 @@ void bat_per_test(enum BATTERY_PERCENT_LEVEL_TAG level_val)
+ #ifdef LOW_BATTERY_PROTECT
+ 
+ #if PMIC_THROTTLING_DLPT_UT
+-static struct lbat_user lbat_test1;
+-static struct lbat_user lbat_test2;
+-static struct lbat_user lbat_test3;
++static struct lbat_user *lbat_test1;
++static struct lbat_user *lbat_test2;
++static struct lbat_user *lbat_test3;
+ 
+ void lbat_test_callback(unsigned int thd)
+ {
+@@ -106,9 +99,10 @@ void lbat_test_callback(unsigned int thd)
+ }
+ #endif
+ 
+-static struct lbat_user lbat_pt;
++
++static struct lbat_user *lbat_pt;
+ #ifdef LBAT_LIMIT_BCPU_OPP
+-static struct lbat_user lbat_pt_ext;
++static struct lbat_user *lbat_pt_ext;
+ #endif
+ int g_low_battery_level;
+ int g_low_battery_stop;
+@@ -211,12 +205,11 @@ void exec_low_battery_callback_ext(unsigned int thd)
+ 
+ void low_battery_protect_init(void)
+ {
+-	int ret = 0;
+ #ifdef LBAT_LIMIT_BCPU_OPP
+ 	u32 fab_info = 0, ptp_info = 0;
+ #endif
+ 
+-	ret = lbat_user_register(&lbat_pt, "power throttling"
++	lbat_pt = lbat_user_register("power throttling"
+ 			, POWER_INT0_VOLT, POWER_INT1_VOLT
+ 			, POWER_INT2_VOLT, exec_low_battery_callback);
+ 
+@@ -231,22 +224,20 @@ void low_battery_protect_init(void)
+ 	ptp_info = (ptp_info & _BITMASK_(31:30)) >> 30;
+ 
+ 	if (!(fab_info == 0x2 || (fab_info == 0x0 && ptp_info == 0x1))) {
+-		ret = lbat_user_register(&lbat_pt_ext, "power throttling ext"
++		lbat_pt_ext = lbat_user_register("power throttling ext"
+ 			, POWER_INT0_VOLT_EXT, POWER_INT1_VOLT_EXT
+ 			, POWER_INT2_VOLT_EXT, exec_low_battery_callback_ext);
+ 	}
+ #endif
+ 
+ #if PMIC_THROTTLING_DLPT_UT
+-	ret = lbat_user_register(&lbat_test1, "test1",
++	lbat_test1 = lbat_user_register("test1",
+ 		3450, 3200, 3000, lbat_test_callback);
+-	ret = lbat_user_register(&lbat_test2, "test2",
++	lbat_test2 = lbat_user_register("test2",
+ 		POWER_INT0_VOLT, 2900, 2800, lbat_test_callback);
+-	ret = lbat_user_register(&lbat_test3, "test3",
++	lbat_test3 = lbat_user_register("test3",
+ 		3450, 3200, 3000, NULL);
+ #endif
+-	if (ret)
+-		pr_notice("[%s] error ret=%d\n", __func__, ret);
+ 
+ 	lbat_dump_reg();
+ 	pr_info("[%s] %d mV, %d mV, %d mV Done\n"
+@@ -510,7 +501,7 @@ static struct task_struct *bat_percent_notify_thread;
+ static bool bat_percent_notify_flag;
+ static DECLARE_WAIT_QUEUE_HEAD(bat_percent_notify_waiter);
+ 
+-struct wakeup_source bat_percent_notify_lock;
++struct wakeup_source* bat_percent_notify_lock;
+ static DEFINE_MUTEX(bat_percent_notify_mutex);
+ 
+ #define BPCB_NUM 16
+@@ -598,7 +589,7 @@ int bat_percent_notify_handler(void *unused)
+ 		wait_event_interruptible(bat_percent_notify_waiter,
+ 					 (bat_percent_notify_flag == true));
+ 
+-		__pm_stay_awake(&bat_percent_notify_lock);
++		__pm_stay_awake(bat_percent_notify_lock);
+ 		mutex_lock(&bat_percent_notify_mutex);
+ 
+ 		exec_battery_percent_callback(g_battery_percent_level);
+@@ -607,7 +598,7 @@ int bat_percent_notify_handler(void *unused)
+ 			g_battery_percent_level);
+ 
+ 		mutex_unlock(&bat_percent_notify_mutex);
+-		__pm_relax(&bat_percent_notify_lock);
++		__pm_relax(bat_percent_notify_lock);
+ 	} while (!kthread_should_stop());
+ 
+ 	return 0;
+@@ -656,7 +647,8 @@ int dlpt_psy_event(struct notifier_block *nb, unsigned long event, void *v)
+ 
+ void bat_percent_notify_init(void)
+ {
+-	wakeup_source_init(&bat_percent_notify_lock,
++	//wakeup_source_init(&bat_percent_notify_lock,
++	bat_percent_notify_lock = wakeup_source_register(NULL,
+ 		"bat_percent_notify_lock wakelock");
+ 
+ 	bat_percent_notify_thread =
+@@ -682,19 +674,19 @@ void __attribute__ ((weak)) register_battery_percent_notify(
+  * AuxADC Impedence Measurement
+  *******************************************************************/
+ static unsigned int count_time_out_adc_imp = 36;
+-static struct wakeup_source ptim_wake_lock;
++static struct wakeup_source* ptim_wake_lock;
+ static struct mutex ptim_mutex;
+ 
+ static void ptim_lock(void)
+ {
+-	__pm_stay_awake(&ptim_wake_lock);
++	__pm_stay_awake(ptim_wake_lock);
+ 	mutex_lock(&ptim_mutex);
+ }
+ 
+ static void ptim_unlock(void)
+ {
+ 	mutex_unlock(&ptim_mutex);
+-	__pm_relax(&ptim_wake_lock);
++	__pm_relax(ptim_wake_lock);
+ }
+ 
+ int do_ptim_internal(bool isSuspend, unsigned int *bat,
+@@ -846,7 +838,7 @@ static struct timer_list dlpt_notify_timer;
+ static struct task_struct *dlpt_notify_thread;
+ static bool dlpt_notify_flag;
+ static DECLARE_WAIT_QUEUE_HEAD(dlpt_notify_waiter);
+-struct wakeup_source dlpt_notify_lock;
++struct wakeup_source* dlpt_notify_lock;
+ static DEFINE_MUTEX(dlpt_notify_mutex);
+ 
+ #define DLPT_NUM 16
+@@ -1171,7 +1163,7 @@ int dlpt_notify_handler(void *unused)
+ 		wait_event_interruptible(dlpt_notify_waiter,
+ 			(dlpt_notify_flag == true));
+ 
+-		__pm_stay_awake(&dlpt_notify_lock);
++		__pm_stay_awake(dlpt_notify_lock);
+ 		mutex_lock(&dlpt_notify_mutex);
+ 
+ 		cur_ui_soc = battery_get_uisoc();
+@@ -1232,7 +1224,7 @@ int dlpt_notify_handler(void *unused)
+ 		}
+ #endif
+ 		mutex_unlock(&dlpt_notify_mutex);
+-		__pm_relax(&dlpt_notify_lock);
++		__pm_relax(dlpt_notify_lock);
+ 
+ 		mod_timer(&dlpt_notify_timer, jiffies + dlpt_notify_interval);
+ 
+@@ -1242,7 +1234,7 @@ int dlpt_notify_handler(void *unused)
+ 	return 0;
+ }
+ 
+-void dlpt_notify_task(unsigned long data)
++void dlpt_notify_task(struct timer_list *t)
+ {
+ 	dlpt_notify_flag = true;
+ 	wake_up_interruptible(&dlpt_notify_waiter);
+@@ -1253,12 +1245,9 @@ void dlpt_notify_init(void)
+ 	unsigned long dlpt_notify_interval;
+ 
+ 	dlpt_notify_interval = HZ * 30;
+-	init_timer_deferrable(&dlpt_notify_timer);
+-	dlpt_notify_timer.function = dlpt_notify_task;
+-	dlpt_notify_timer.data = (unsigned long)&dlpt_notify_timer;
++	timer_setup(&dlpt_notify_timer, dlpt_notify_task, TIMER_DEFERRABLE);
+ 	mod_timer(&dlpt_notify_timer, jiffies + dlpt_notify_interval);
+-
+-	wakeup_source_init(&dlpt_notify_lock, "dlpt_notify_lock wakelock");
++	dlpt_notify_lock = wakeup_source_register(NULL, "dlpt_notify_lock wakelock");
+ 
+ 	dlpt_notify_thread = kthread_run(dlpt_notify_handler, 0,
+ 		"dlpt_notify_thread");
+@@ -1918,7 +1907,8 @@ int pmic_throttling_dlpt_init(struct platform_device *pdev)
+ 	pr_info("Get default UNIT_FGCURRENT= %d\n", UNIT_FGCURRENT);
+ #endif /* end of #if CONFIG_MTK_GAUGE_VERSION == 30 */
+ 
+-	wakeup_source_init(&ptim_wake_lock, "PTIM_wakelock");
++	//wakeup_source_init(&ptim_wake_lock, "PTIM_wakelock");
++	ptim_wake_lock = wakeup_source_register(NULL, "PTIM_wakelock");
+ 	mutex_init(&ptim_mutex);
+ 	/* IMPEDANCE initial setting */
+ 	pmic_set_hk_reg_value(PMIC_AUXADC_IMPEDANCE_CNT, 1);
+diff --git a/drivers/mmc/host/mediatek/ComboA/dbg.c b/drivers/mmc/host/mediatek/ComboA/dbg.c
+index 5b57fb0a4..f99209975 100644
+--- a/drivers/mmc/host/mediatek/ComboA/dbg.c
++++ b/drivers/mmc/host/mediatek/ComboA/dbg.c
+@@ -1457,7 +1457,7 @@ static int multi_rw_compare_core(int host_num, int read, uint address,
+ 
+ 	mmc = host_ctl->mmc;
+ 
+-	mmc_get_card(mmc->card);
++	mmc_get_card(mmc->card, NULL);
+ 
+ #if defined(CONFIG_MTK_EMMC_CQ_SUPPORT) || defined(CONFIG_MTK_EMMC_HW_CQ)
+ 	cmdq_en = !!mmc_card_cmdq(mmc->card);
+@@ -1467,7 +1467,7 @@ static int multi_rw_compare_core(int host_num, int read, uint address,
+ 		ret = mmc_cmdq_disable(host_ctl->mmc->card);
+ 		if (ret) {
+ 			pr_notice("[MSDC_DBG] turn off cmdq en failed\n");
+-			mmc_put_card(host_ctl->mmc->card);
++			mmc_put_card(host_ctl->mmc->card, NULL);
+ 			result = -1;
+ 			goto free;
+ 		}
+@@ -1554,7 +1554,7 @@ static int multi_rw_compare_core(int host_num, int read, uint address,
+ 	}
+ #endif
+ 
+-	mmc_put_card(host_ctl->mmc->card);
++	mmc_put_card(host_ctl->mmc->card, NULL);
+ 
+ 	if (msdc_cmd.error)
+ 		result = msdc_cmd.error;
+@@ -2145,7 +2145,7 @@ static void msdc_enable_emmc_cache(struct seq_file *m,
+ 
+ 	card = host->mmc->card;
+ 
+-	(void)mmc_get_card(card);
++	(void)mmc_get_card(card, NULL);
+ 
+ 	c_ctrl = card->ext_csd.cache_ctrl;
+ 
+@@ -2161,7 +2161,7 @@ static void msdc_enable_emmc_cache(struct seq_file *m,
+ 			seq_printf(m, "msdc%d: %s cache successfully\n",
+ 				host->id, enable ? "enable" : "disable");
+ 	}
+-	mmc_put_card(card);
++	mmc_put_card(card, NULL);
+ }
+ 
+ #ifdef MTK_MSDC_ERROR_TUNE_DEBUG
+@@ -2614,9 +2614,9 @@ static int msdc_debug_proc_show(struct seq_file *m, void *v)
+ 
+ 			host = mtk_msdc_host[id];
+ 		if (p1 == 1) {
+-			mmc_get_card(host->mmc->card);
++			mmc_get_card(host->mmc->card, NULL);
+ 			msdc_set_host_mode_speed(m, host->mmc, spd_mode);
+-			mmc_put_card(host->mmc->card);
++			mmc_put_card(host->mmc->card, NULL);
+ 		}
+ 		msdc_get_host_mode_speed(m, host->mmc);
+ 	} else if (cmd == SD_TOOL_DMA_STATUS) {
+@@ -3010,7 +3010,7 @@ static int msdc_ext_csd_show(struct seq_file *m, void *v)
+ 		return 0;
+ 
+ 	card = host->mmc->card;
+-	mmc_get_card(card);
++	mmc_get_card(card, NULL);
+ 
+ #if defined(CONFIG_MTK_EMMC_CQ_SUPPORT) || defined(CONFIG_MTK_EMMC_HW_CQ)
+ 	cmdq_en = !!mmc_card_cmdq(card);
+@@ -3020,7 +3020,7 @@ static int msdc_ext_csd_show(struct seq_file *m, void *v)
+ 		ret = mmc_cmdq_disable(card);
+ 		if (ret) {
+ 			pr_notice("[%s] turn off cmdq en failed\n", __func__);
+-			mmc_put_card(card);
++			mmc_put_card(card, NULL);
+ 			return 0;
+ 		}
+ 	}
+@@ -3037,7 +3037,7 @@ static int msdc_ext_csd_show(struct seq_file *m, void *v)
+ 	}
+ #endif
+ 
+-	mmc_put_card(card);
++	mmc_put_card(card, NULL);
+ 	if (err) {
+ 		pr_notice("[%s ]mmc_get_ext_csd failed!\n", __func__);
+ 		kfree(ext_csd);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6768/autok_dvfs.c b/drivers/mmc/host/mediatek/ComboA/mt6768/autok_dvfs.c
+index b99210428..b1fa66767 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6768/autok_dvfs.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6768/autok_dvfs.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <asm/segment.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/uaccess.h>
+ #include <linux/buffer_head.h>
+ #include <linux/delay.h>
+@@ -903,7 +904,7 @@ int emmc_autok(void)
+ 	 * Static variable required by vcore dvfs module, otherwise deadlock
+ 	 * happens.
+ 	 */
+-	static struct pm_qos_request autok_force;
++	static struct mtk_pm_qos_request autok_force;
+ 
+ 	if (!host || !host->mmc) {
+ 		pr_notice("eMMC device not ready\n");
+@@ -929,11 +930,11 @@ int emmc_autok(void)
+ 		return -1;
+ #endif
+ 
+-	pm_qos_add_request(&autok_force, PM_QOS_VCORE_DVFS_FORCE_OPP,
+-			PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
++	mtk_pm_qos_add_request(&autok_force, MTK_PM_QOS_VCORE_DVFS_FORCE_OPP,
++			MTK_PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
+ 
+ 	for (i = 0; i < AUTOK_VCORE_NUM; i++) {
+-		pm_qos_update_request(&autok_force, autok_opp[i]);
++		mtk_pm_qos_update_request(&autok_force, autok_opp[i]);
+ 		/* vcore = 0.51875V + 6.25mV * vcore_step2 */
+ 		vcore_step2 = pmic_get_register_value(PMIC_RG_BUCK_VCORE_VOSEL);
+ 		pr_notice("msdc fix vcore, PMIC_RG_BUCK_VCORE_VOSEL: %d\n",
+@@ -981,7 +982,7 @@ int emmc_autok(void)
+ 		host->lock_vcore = 1;
+ 	}
+ 
+-	pm_qos_remove_request(&autok_force);
++	mtk_pm_qos_remove_request(&autok_force);
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	if (emmc_autok_switch_cqe(host, 1))
+ 		return -1;
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6768/msdc_cust.c b/drivers/mmc/host/mediatek/ComboA/mt6768/msdc_cust.c
+index 1ba2834df..05bcb6f55 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6768/msdc_cust.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6768/msdc_cust.c
+@@ -17,6 +17,7 @@
+ #define pr_fmt(fmt) "["KBUILD_MODNAME"]" fmt
+ 
+ #include <linux/delay.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/device.h>
+ #include <linux/platform_device.h>
+ #include <linux/of.h>
+@@ -1169,8 +1170,8 @@ int msdc_of_parse(struct platform_device *pdev, struct mmc_host *mmc)
+ 		if (!host->req_vcore)
+ 			return -ENOMEM;
+ 
+-		pm_qos_add_request(host->req_vcore, PM_QOS_VCORE_OPP,
+-			PM_QOS_VCORE_OPP_DEFAULT_VALUE);
++		mtk_pm_qos_add_request(host->req_vcore, MTK_PM_QOS_VCORE_OPP,
++			MTK_PM_QOS_VCORE_OPP_DEFAULT_VALUE);
+ 	}
+ 	/* iomap register */
+ 	host->base = of_iomap(np, 0);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mtk_sd_misc.c b/drivers/mmc/host/mediatek/ComboA/mtk_sd_misc.c
+index f1ad03324..aab1ec01b 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mtk_sd_misc.c
++++ b/drivers/mmc/host/mediatek/ComboA/mtk_sd_misc.c
+@@ -89,13 +89,13 @@ int msdc_reinit(struct msdc_host *host)
+ 	if (!(host->mmc->caps & MMC_CAP_NONREMOVABLE)
+ 	 || (host->block_bad_card != 0))
+ 		goto skip_reinit1;
+-	mmc_get_card(card);
++	mmc_get_card(card, NULL);
+ 	mmc->ios.timing = MMC_TIMING_LEGACY;
+ 	msdc_ops_set_ios(mmc, &mmc->ios);
+ 	/* FIX ME, check if bus_ops->reset() shall be un-commented */
+ 	/* power reset sdcard */
+ 	/* ret = mmc->bus_ops->reset(mmc); */
+-	mmc_put_card(card);
++	mmc_put_card(card, NULL);
+ 
+ 	ERR_MSG("Reinit %s", ret == 0 ? "success" : "fail");
+ 
+@@ -161,7 +161,7 @@ static int simple_sd_ioctl_set_bootpart(struct msdc_ioctl *msdc_ctl)
+ 	if (msdc_ctl->buffer == NULL)
+ 		return -EINVAL;
+ 
+-	mmc_get_card(mmc->card);
++	mmc_get_card(mmc->card, NULL);
+ 
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	(void)mmc_cmdq_disable(mmc->card);
+@@ -211,7 +211,7 @@ static int simple_sd_ioctl_set_bootpart(struct msdc_ioctl *msdc_ctl)
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	(void)mmc_cmdq_enable(mmc->card);
+ #endif
+-	mmc_put_card(mmc->card);
++	mmc_put_card(mmc->card, NULL);
+ 
+ 	kfree(l_buf);
+ 	return ret;
+@@ -282,7 +282,7 @@ int simple_sd_ioctl_rw(struct msdc_ioctl *msdc_ctl)
+ 	} else {
+ 		memset(sg_msdc_multi_buffer, 0, total_size);
+ 	}
+-	mmc_get_card(mmc->card);
++	mmc_get_card(mmc->card, NULL);
+ 
+ 	MMC_IOCTL_PR_DBG("user want access %d partition\n",
+ 		msdc_ctl->partition);
+@@ -421,7 +421,7 @@ int simple_sd_ioctl_rw(struct msdc_ioctl *msdc_ctl)
+ 	}
+ #endif
+ 
+-	mmc_put_card(mmc->card);
++	mmc_put_card(mmc->card, NULL);
+ 	if (!msdc_ctl->iswrite) {
+ 		if (msdc_ctl->opcode != MSDC_CARD_DUNM_FUNC) {
+ 			if (copy_to_user(msdc_ctl->buffer, sg_msdc_multi_buffer,
+@@ -452,7 +452,7 @@ int simple_sd_ioctl_rw(struct msdc_ioctl *msdc_ctl)
+ 			is_cmdq_en = false;
+ 	}
+ #endif
+-	mmc_put_card(mmc->card);
++	mmc_put_card(mmc->card, NULL);
+ 
+ rw_end_without_release:
+ 	if (ret)
+@@ -542,7 +542,7 @@ static int simple_sd_ioctl_get_bootpart(struct msdc_ioctl *msdc_ctl)
+ 	if (get_user(user_buffer, msdc_ctl->buffer))
+ 		return -EINVAL;
+ 
+-	mmc_get_card(mmc->card);
++	mmc_get_card(mmc->card, NULL);
+ 
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 		(void)mmc_cmdq_disable(mmc->card);
+@@ -578,7 +578,7 @@ static int simple_sd_ioctl_get_bootpart(struct msdc_ioctl *msdc_ctl)
+ 		(void)mmc_cmdq_enable(mmc->card);
+ #endif
+ 
+-	mmc_put_card(mmc->card);
++	mmc_put_card(mmc->card, NULL);
+ 
+ 	kfree(l_buf);
+ 
+@@ -601,7 +601,7 @@ static int simple_sd_ioctl_get_partition_size(struct msdc_ioctl *msdc_ctl)
+ 
+ 	mmc = host_ctl->mmc;
+ 
+-	mmc_get_card(mmc->card);
++	mmc_get_card(mmc->card, NULL);
+ 
+ 	MMC_IOCTL_PR_DBG("get size of partition=%d\n", msdc_ctl->partition);
+ 
+@@ -631,7 +631,7 @@ static int simple_sd_ioctl_get_partition_size(struct msdc_ioctl *msdc_ctl)
+ 
+ 	msdc_ctl->result = ret;
+ 
+-	mmc_put_card(mmc->card);
++	mmc_put_card(mmc->card, NULL);
+ 
+ 	return ret;
+ }
+@@ -738,7 +738,7 @@ static int simple_mmc_erase_func(unsigned int start, unsigned int size)
+ 	}
+ 	mmc = host->mmc;
+ 
+-	mmc_get_card(mmc->card);
++	mmc_get_card(mmc->card, NULL);
+ 
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 		(void)mmc_cmdq_disable(mmc->card);
+@@ -771,7 +771,7 @@ static int simple_mmc_erase_func(unsigned int start, unsigned int size)
+ 		(void)mmc_cmdq_disable(mmc->card);
+ #endif
+ 
+-	mmc_put_card(mmc->card);
++	mmc_put_card(mmc->card, NULL);
+ 
+ 	return 0;
+ }
+@@ -801,7 +801,7 @@ static int simple_sd_ioctl_erase_selected_area(struct msdc_ioctl *msdc_ctl)
+ 
+ 	mmc = host_ctl->mmc;
+ 
+-	mmc_get_card(mmc->card);
++	mmc_get_card(mmc->card, NULL);
+ 
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 		(void)mmc_cmdq_disable(mmc->card);
+@@ -845,7 +845,7 @@ static int simple_sd_ioctl_erase_selected_area(struct msdc_ioctl *msdc_ctl)
+ 		(void)mmc_cmdq_enable(mmc->card);
+ #endif
+ 
+-	mmc_put_card(mmc->card);
++	mmc_put_card(mmc->card, NULL);
+ 
+ 	msdc_ctl->result = err;
+ 
+diff --git a/drivers/mmc/host/mediatek/ComboA/sd.c b/drivers/mmc/host/mediatek/ComboA/sd.c
+index 285c2a9b7..d64394596 100644
+--- a/drivers/mmc/host/mediatek/ComboA/sd.c
++++ b/drivers/mmc/host/mediatek/ComboA/sd.c
+@@ -53,7 +53,10 @@
+ #include <mmc/core/queue.h>
+ #include <mmc/core/mmc_ops.h>
+ #include "mmc/host/cqhci-crypto.h"
++/* A31 port: Samsung eMMC error-log sysfs needs the 4.14 Samsung mmc core (err_log) */
++#ifdef CONFIG_A31_MMC_SEC_ERRLOG
+ #include "mmc-sec-sysfs.c"
++#endif
+ 
+ #ifdef MTK_MSDC_BRINGUP_DEBUG
+ //#include <mach/mt_pmic_wrap.h>
+@@ -5510,7 +5513,9 @@ static int msdc_drv_probe(struct platform_device *pdev)
+ 	if (host->hw->host_function == MSDC_EMMC)
+ 		msdc_debug_proc_init_bootdevice();
+ 
++#ifdef CONFIG_A31_MMC_SEC_ERRLOG
+ 	mmc_sec_init_sysfs(mmc);
++#endif
+ 
+ 	return 0;
+ 
+diff --git a/drivers/mmc/host/mediatek/ComboA/sw-cqhci-crypto.c b/drivers/mmc/host/mediatek/ComboA/sw-cqhci-crypto.c
+index bb06c1980..6f919f1bc 100644
+--- a/drivers/mmc/host/mediatek/ComboA/sw-cqhci-crypto.c
++++ b/drivers/mmc/host/mediatek/ComboA/sw-cqhci-crypto.c
+@@ -123,11 +123,12 @@ static void msdc_crypto_program_key(struct mmc_host *host,
+ 	/* TKEY */
+ 	for (i = 0; i < 8; i++)
+ 		writel(tkey[i], ll_host->base + (MSDC_AES_TKEY_GP1 + i * 4));
++
+ }
+ 
+ /* set crypto information */
+ static int msdc_prepare_mqr_crypto(struct mmc_host *host,
+-		u64 data_unit_num, int ddir, int slot)
++		u64 data_unit_num, int ddir, int tag, int slot)
+ {
+ 	u32 data_unit_size;
+ 	u32 aes_config;
+-- 
+2.43.0
+

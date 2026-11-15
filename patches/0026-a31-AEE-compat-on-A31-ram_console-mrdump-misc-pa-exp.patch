@@ -1,0 +1,180 @@
+From 7f8454118b912f98c1f2aad3884bb1a448b2afa9 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 12:45:04 +0000
+Subject: [PATCH 26/29] a31: AEE compat on A31 ram_console, mrdump misc pa
+ export, input booster notifier, TUI force close, DLPT no-op
+
+---
+ drivers/input/evdev.c                         | 41 ++++++++++++++++++
+ .../misc/mediatek/aee/mrdump/mrdump_mini.c    |  2 +-
+ .../misc/mediatek/base/power/pbm_v4/mtk_pbm.c |  6 +++
+ drivers/misc/mediatek/gud/410/TlcTui/main.c   | 15 +++++++
+ .../mediatek/ram_console/mtk_ram_console.c    | 43 +++++++++++++++++++
+ 5 files changed, 106 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/input/evdev.c b/drivers/input/evdev.c
+index 05c617bff..bb1f228ce 100644
+--- a/drivers/input/evdev.c
++++ b/drivers/input/evdev.c
+@@ -56,6 +56,35 @@ struct evdev_client {
+ 	struct input_event buffer[];
+ };
+ 
++#if IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER)
++#include <linux/notifier.h>
++#include <linux/input/input_booster.h>
++
++struct workqueue_struct *ib_unbound_highwq;
++spinlock_t ib_idx_lock;
++struct ib_event_work *ib_evt_work;
++int ib_work_cnt;
++
++static BLOCKING_NOTIFIER_HEAD(ib_notifier_list);
++
++int ib_notifier_register(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_register(&ib_notifier_list, nb);
++}
++EXPORT_SYMBOL(ib_notifier_register);
++
++int ib_notifier_unregister(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_unregister(&ib_notifier_list, nb);
++}
++EXPORT_SYMBOL(ib_notifier_unregister);
++
++int ib_notifier_call_chain(unsigned long val, void *v)
++{
++	return blocking_notifier_call_chain(&ib_notifier_list, val, v);
++}
++EXPORT_SYMBOL_GPL(ib_notifier_call_chain);
++#endif
+ static size_t evdev_get_mask_cnt(unsigned int type)
+ {
+ 	static const size_t counts[EV_CNT] = {
+@@ -1437,6 +1466,18 @@ static struct input_handler evdev_handler = {
+ 
+ static int __init evdev_init(void)
+ {
++#if IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER)
++	int i;
++	ib_evt_work = kmalloc(sizeof(struct ib_event_work) * MAX_IB_COUNT, GFP_KERNEL);
++	if (ib_evt_work != NULL) {
++		for (i = 0; i < MAX_IB_COUNT; i++)
++			INIT_WORK(&(ib_evt_work[i].evdev_work), evdev_ib_trigger);
++	}
++	ib_work_cnt = 0;
++	spin_lock_init(&ib_idx_lock);
++	ib_unbound_highwq =
++		alloc_ordered_workqueue("ib_unbound_highwq", WQ_HIGHPRI);
++#endif
+ 	return input_register_handler(&evdev_handler);
+ }
+ 
+diff --git a/drivers/misc/mediatek/aee/mrdump/mrdump_mini.c b/drivers/misc/mediatek/aee/mrdump/mrdump_mini.c
+index 4f4aabd96..66c72d589 100644
+--- a/drivers/misc/mediatek/aee/mrdump/mrdump_mini.c
++++ b/drivers/misc/mediatek/aee/mrdump/mrdump_mini.c
+@@ -260,7 +260,7 @@ static int fill_psinfo(struct elf_prpsinfo *psinfo)
+ #define __pa_nodebug __pa
+ #endif
+ #endif
+-static void mrdump_mini_add_misc_pa(unsigned long va, unsigned long pa,
++void mrdump_mini_add_misc_pa(unsigned long va, unsigned long pa,
+ 		unsigned long size, unsigned long start, char *name)
+ {
+ 	int i;
+diff --git a/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c b/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c
+index 0a7392a40..5b30527d5 100644
+--- a/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c
++++ b/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c
+@@ -1038,3 +1038,9 @@ module_init(pbm_module_init);
+ module_exit(pbm_module_exit);
+ 
+ MODULE_DESCRIPTION("PBM Driver v0.1");
++
++/* A31 port: DLPT is disabled on A31 (Samsung battery, PT_DLPT_BRINGUP); no-op default */
++void __weak register_dlpt_notify(void (*dlpt_callback)(unsigned int dlpt_val),
++		enum DLPT_PRIO_TAG prio_val)
++{
++}
+diff --git a/drivers/misc/mediatek/gud/410/TlcTui/main.c b/drivers/misc/mediatek/gud/410/TlcTui/main.c
+index 2e39643a5..eceab48dd 100644
+--- a/drivers/misc/mediatek/gud/410/TlcTui/main.c
++++ b/drivers/misc/mediatek/gud/410/TlcTui/main.c
+@@ -39,6 +39,21 @@
+ /* Static variables */
+ static struct cdev tui_cdev;
+ 
++
++/* A31 port: called by the IST40xx touch driver on TUI cancel (as A31) */
++int tui_force_close(uint32_t arg)
++{
++	int ret = 0;
++
++	pr_info("Force TUI_IO_NOTIFY %d\n", arg);
++	if (tlc_notify_event(arg))
++		ret = 0;
++	else
++		ret = -EFAULT;
++	return ret;
++}
++EXPORT_SYMBOL(tui_force_close);
++
+ static long tui_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+ {
+ 	int ret = -ENOTTY;
+diff --git a/drivers/misc/mediatek/ram_console/mtk_ram_console.c b/drivers/misc/mediatek/ram_console/mtk_ram_console.c
+index df93aea13..2633b20b3 100644
+--- a/drivers/misc/mediatek/ram_console/mtk_ram_console.c
++++ b/drivers/misc/mediatek/ram_console/mtk_ram_console.c
+@@ -3624,3 +3624,46 @@ int aee_rr_reboot_reason_show(struct seq_file *m, void *v)
+ 	}
+ 	return 0;
+ }
++
++/* --- A31 port: 4.19 mrdump expects these from mboot_params.c --- */
++int aee_is_enable(void)
++{
++	struct device_node *node;
++	const char *aee_enable;
++	int ret = 0;
++
++	node = of_find_node_by_path("/chosen");
++	if (node) {
++		if (of_property_read_string(node, "aee,enable", &aee_enable) == 0) {
++			if (strnstr(aee_enable, "mini", 4))
++				ret = 1;
++			else if (strnstr(aee_enable, "full", 4))
++				ret = 2;
++		}
++		of_node_put(node);
++	}
++	return ret;
++}
++EXPORT_SYMBOL(aee_is_enable);
++
++void aee_sram_printk(const char *fmt, ...)
++{
++	char buf[256];
++	va_list args;
++
++	va_start(args, fmt);
++	vscnprintf(buf, sizeof(buf), fmt, args);
++	va_end(args);
++	aee_sram_fiq_log(buf);
++}
++EXPORT_SYMBOL(aee_sram_printk);
++
++/* A31 ram_console keeps no separate mboot log buffer */
++void get_mbootlog_buffer(unsigned long *addr, unsigned long *size,
++		unsigned long *start)
++{
++	*addr = 0;
++	*size = 0;
++	*start = 0;
++}
++EXPORT_SYMBOL(get_mbootlog_buffer);
+-- 
+2.43.0
+

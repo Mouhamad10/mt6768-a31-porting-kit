@@ -1,0 +1,32 @@
+From e57f0584a4ccfa3726494646493da08a868a7011 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 12:41:43 +0000
+Subject: [PATCH 23/29] a31: declare pwrap_disable at top of wdt_v2
+
+---
+ drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c b/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c
+index fd479fe34..19b2a8b92 100644
+--- a/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c
++++ b/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c
+@@ -15,6 +15,7 @@
+ #define __USING_DUMMY_WDT_DRV__
+ #endif
+ 
++extern void pwrap_disable(void);
+ #include <linux/init.h>        /* For init/exit macros */
+ #include <linux/module.h>      /* For MODULE_ marcros  */
+ #include <linux/kernel.h>
+@@ -98,7 +99,6 @@ __weak void dfd_workaround(void) {};
+ 
+ #ifdef CONFIG_KICK_SPM_WDT
+ #include <mach/mt_spm.h>
+-extern void pwrap_disable(void);
+ static void spm_wdt_init(void);
+ #endif
+ 
+-- 
+2.43.0
+

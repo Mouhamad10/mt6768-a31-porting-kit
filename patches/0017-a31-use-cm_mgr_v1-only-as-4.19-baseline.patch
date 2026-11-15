@@ -1,0 +1,39 @@
+From 6e638a314b1a1a5a25f94c3c993582ab146ee399 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 10:05:03 +0000
+Subject: [PATCH 17/29] a31: use cm_mgr_v1 only (as 4.19 baseline)
+
+---
+ arch/arm64/configs/a31_4.19.fragment | 1 +
+ arch/arm64/configs/a31_defconfig     | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/configs/a31_4.19.fragment b/arch/arm64/configs/a31_4.19.fragment
+index 82a590af5..3dc51ea24 100644
+--- a/arch/arm64/configs/a31_4.19.fragment
++++ b/arch/arm64/configs/a31_4.19.fragment
+@@ -77,3 +77,4 @@ CONFIG_STACKPROTECTOR_STRONG=y
+ CONFIG_A31_LEGACY_TIMER_API=y
+ # CONFIG_MTK_EMMC_HW_CQ is not set
+ # CONFIG_SEC_DEBUG_AUTO_COMMENT is not set
++# CONFIG_MTK_CM_MGR is not set
+diff --git a/arch/arm64/configs/a31_defconfig b/arch/arm64/configs/a31_defconfig
+index 968f3fe4e..2e4a7cb8c 100644
+--- a/arch/arm64/configs/a31_defconfig
++++ b/arch/arm64/configs/a31_defconfig
+@@ -1443,7 +1443,6 @@ CONFIG_MTK_STATIC_POWER=y
+ CONFIG_MTK_UNIFY_POWER=y
+ # CONFIG_MTK_SLBC is not set
+ # CONFIG_MTK_SLBC_MMSRAM is not set
+-CONFIG_MTK_CM_MGR=y
+ # CONFIG_MTK_SWPM is not set
+ # CONFIG_MTK_QOS_FRAMEWORK is not set
+ CONFIG_MTK_QOS_V1=y
+@@ -6044,3 +6043,4 @@ CONFIG_STACKPROTECTOR_STRONG=y
+ CONFIG_A31_LEGACY_TIMER_API=y
+ # CONFIG_MTK_EMMC_HW_CQ is not set
+ # CONFIG_SEC_DEBUG_AUTO_COMMENT is not set
++# CONFIG_MTK_CM_MGR is not set
+-- 
+2.43.0
+

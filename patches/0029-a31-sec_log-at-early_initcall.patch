@@ -1,0 +1,25 @@
+From 23f6a10fc782a098121a9f0c781229ef3023b6f1 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 16:08:25 +0000
+Subject: [PATCH 29/29] a31: sec_log at early_initcall
+
+---
+ drivers/samsung/misc/sec_log.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/samsung/misc/sec_log.c b/drivers/samsung/misc/sec_log.c
+index fb816b403..20135ac82 100644
+--- a/drivers/samsung/misc/sec_log.c
++++ b/drivers/samsung/misc/sec_log.c
+@@ -249,7 +249,7 @@ static int __init sec_log_buf_init(void)
+ 
+ 	return 0;
+ }
+-arch_initcall(sec_log_buf_init);
++early_initcall(sec_log_buf_init); /* A31 port: as early as possible to catch early crashes */
+ 
+ #ifdef CONFIG_SEC_LOG_HOOK_PMSG
+ static int sec_log_combine_pmsg(char *buffer, size_t count, unsigned int level)
+-- 
+2.43.0
+

@@ -1,0 +1,48 @@
+From f2e5576f8ae82fe508622101a8fd8616dc662fa9 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 12:45:48 +0000
+Subject: [PATCH 27/29] a31: evdev booster trigger, DLPT stub signature
+
+---
+ drivers/input/evdev.c                             | 12 ++++++++++++
+ drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c |  2 +-
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/input/evdev.c b/drivers/input/evdev.c
+index bb1f228ce..305b57681 100644
+--- a/drivers/input/evdev.c
++++ b/drivers/input/evdev.c
+@@ -317,6 +317,18 @@ static void evdev_pass_values(struct evdev_client *client,
+ 		wake_up_interruptible(&evdev->wait);
+ }
+ 
++#if IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER)
++static void evdev_ib_trigger(struct work_struct *work)
++{
++	struct ib_event_work *ib_work = container_of(work, struct ib_event_work, evdev_work);
++	struct ib_event_data ib_data;
++
++	ib_data.evt_cnt = ib_work->evt_cnt;
++	ib_data.vals = ib_work->vals;
++	ib_notifier_call_chain(IB_EVENT_TOUCH_BOOSTER, &(ib_data));
++}
++#endif
++
+ /*
+  * Pass incoming events to all connected clients.
+  */
+diff --git a/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c b/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c
+index 5b30527d5..e222cab37 100644
+--- a/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c
++++ b/drivers/misc/mediatek/base/power/pbm_v4/mtk_pbm.c
+@@ -1041,6 +1041,6 @@ MODULE_DESCRIPTION("PBM Driver v0.1");
+ 
+ /* A31 port: DLPT is disabled on A31 (Samsung battery, PT_DLPT_BRINGUP); no-op default */
+ void __weak register_dlpt_notify(void (*dlpt_callback)(unsigned int dlpt_val),
+-		enum DLPT_PRIO_TAG prio_val)
++		DLPT_PRIO prio_val)
+ {
+ }
+-- 
+2.43.0
+

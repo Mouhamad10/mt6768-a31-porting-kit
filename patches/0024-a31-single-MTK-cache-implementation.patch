@@ -1,0 +1,25 @@
+From e9362ad863682dd0e98de54c785c69ed731e9270 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 12:42:32 +0000
+Subject: [PATCH 24/29] a31: single MTK cache implementation
+
+---
+ arch/arm64/mm/Makefile | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/arch/arm64/mm/Makefile b/arch/arm64/mm/Makefile
+index 290ae685c..caf374c73 100644
+--- a/arch/arm64/mm/Makefile
++++ b/arch/arm64/mm/Makefile
+@@ -11,5 +11,8 @@ obj-$(CONFIG_DEBUG_VIRTUAL)	+= physaddr.o
+ KASAN_SANITIZE_physaddr.o	+= n
+ 
+ obj-$(CONFIG_KASAN)		+= kasan_init.o
++# A31 port: 4.19 uses drivers/misc/mediatek/cache (MEDIATEK_CACHE_API)
++ifneq ($(CONFIG_MEDIATEK_CACHE_API),y)
+ obj-$(CONFIG_MEDIATEK_SOLUTION) += cache-mtk-v8.o
++endif
+ KASAN_SANITIZE_kasan_init.o	:= n
+-- 
+2.43.0
+

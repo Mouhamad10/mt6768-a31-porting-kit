@@ -1,0 +1,340 @@
+From e60d8c903cd96dc017f50b069a17e7c4e9e59a4b Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 08:24:27 +0000
+Subject: [PATCH 02/29] a31: wire Samsung drivers into Kconfig/Makefiles
+
+---
+ drivers/Kconfig                    | 28 ++++++++++++++++++++++++++++
+ drivers/Makefile                   | 27 +++++++++++++++++++++++++++
+ drivers/input/Kconfig              | 14 ++++++++++++++
+ drivers/input/Makefile             |  5 +++++
+ drivers/input/touchscreen/Kconfig  |  3 +++
+ drivers/input/touchscreen/Makefile |  3 +++
+ drivers/mfd/Kconfig                | 12 ++++++++++++
+ drivers/nfc/Kconfig                | 13 +++++++++++++
+ drivers/nfc/Makefile               |  3 +++
+ drivers/usb/Kconfig                |  3 +++
+ drivers/usb/Makefile               |  3 +++
+ fs/Kconfig                         |  1 +
+ fs/Makefile                        |  3 +++
+ security/Kconfig                   | 23 +++++++++++++++++++++++
+ security/Makefile                  |  8 ++++++++
+ sound/soc/codecs/Kconfig           | 11 +++++++++++
+ sound/soc/codecs/Makefile          |  4 ++++
+ 17 files changed, 164 insertions(+)
+
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index b1ae44267..1bc18677c 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -228,4 +228,32 @@ source "drivers/slimbus/Kconfig"
+ source "drivers/interconnect/Kconfig"
+ 
+ source "drivers/energy_model/Kconfig"
++
++# --- A31 port: Samsung drivers ---
++source "drivers/switch/Kconfig"
++source "drivers/samsung/Kconfig"
++source "drivers/sensors/Kconfig"
++source "drivers/spu_verify/Kconfig"
++source "drivers/regulator/pmic_class/Kconfig"
++source "drivers/security/samsung/icdrv/Kconfig"
++source "drivers/usb/typec/slsi/common/Kconfig"
++source "drivers/vibrator/common/Kconfig"
++source "drivers/security/samsung/five_tee_driver/Kconfig"
++source "drivers/sti/abc/Kconfig"
++source "drivers/sti/common/Kconfig"
++source "drivers/security/samsung/tzic/Kconfig"
++source "drivers/muic/common/Kconfig"
++source "drivers/fingerprint/Kconfig"
++source "drivers/usb/typec/slsi/s2mu106/Kconfig"
++source "drivers/usb/typec/manager/Kconfig"
++source "drivers/usb/typec/common/Kconfig"
++source "drivers/mfd/slsi/s2mu106/Kconfig"
++source "drivers/hwmon/sec_thermistor/Kconfig"
++source "drivers/vibrator/slsi/s2mu106/Kconfig"
++source "drivers/regulator/s2mpb03/Kconfig"
++source "drivers/muic/slsi/s2mu106/Kconfig"
++source "drivers/battery/fuelgauge/s2mu106_fuelgauge/Kconfig"
++source "drivers/battery/charger/s2mu106_charger/Kconfig"
++source "drivers/battery/common/Kconfig"
++
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 18ac7061c..8a5c86159 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -191,3 +191,30 @@ obj-$(CONFIG_UNISYS_VISORBUS)	+= visorbus/
+ obj-$(CONFIG_SIOX)		+= siox/
+ obj-$(CONFIG_GNSS)		+= gnss/
+ obj-$(CONFIG_INTERCONNECT)     += interconnect/
++
++# --- A31 port: Samsung drivers ---
++obj-$(CONFIG_SEC_EXT)	+= samsung/
++obj-$(CONFIG_SWITCH)		+= switch/
++obj-$(CONFIG_SENSORS)		+= sensors/
++obj-$(CONFIG_SPU_VERIFY)	+= spu_verify/
++obj-y += regulator/pmic_class/
++obj-y += security/samsung/icdrv/
++obj-y += usb/typec/slsi/common/
++obj-y += vibrator/common/
++obj-y += security/samsung/five_tee_driver/
++obj-y += sti/abc/
++obj-y += sti/common/
++obj-y += security/samsung/tzic/
++obj-y += muic/common/
++obj-y += fingerprint/
++obj-y += usb/typec/slsi/s2mu106/
++obj-y += usb/typec/manager/
++obj-y += usb/typec/common/
++obj-y += mfd/slsi/s2mu106/
++obj-y += hwmon/sec_thermistor/
++obj-y += vibrator/slsi/s2mu106/
++obj-y += regulator/s2mpb03/
++obj-y += muic/slsi/s2mu106/
++obj-y += battery/fuelgauge/s2mu106_fuelgauge/
++obj-y += battery/charger/s2mu106_charger/
++obj-y += battery/common/
+diff --git a/drivers/input/Kconfig b/drivers/input/Kconfig
+index 663466260..33c831b4a 100644
+--- a/drivers/input/Kconfig
++++ b/drivers/input/Kconfig
+@@ -212,5 +212,19 @@ source "drivers/input/gameport/Kconfig"
+ 
+ endmenu
+ 
++
++# --- A31 port: sec_cmd/tclm ---
++config INPUT_TOUCHSCREEN_TCLMV2
++	bool "touchscreen tclmv2"
++	depends on I2C
++	help
++	  Say Y here if you need to use tclm.
++
++	  If unsure, say N.
++
++config SEC_DEBUG_TSP_LOG
++	tristate "Support for tsp_msg"
++	default n
++
+ endmenu
+ 
+diff --git a/drivers/input/Makefile b/drivers/input/Makefile
+index 8ba735782..1a51a0bd9 100644
+--- a/drivers/input/Makefile
++++ b/drivers/input/Makefile
+@@ -30,3 +30,8 @@ obj-$(CONFIG_MTK_FINGERPRINT_SUPPORT)	+= fingerprint/
+ obj-$(CONFIG_INPUT_APMPOWER)	+= apm-power.o
+ 
+ obj-$(CONFIG_RMI4_CORE)		+= rmi4/
++
++# --- A31 port: sec_cmd/tclm ---
++obj-$(CONFIG_INPUT_TOUCHSCREEN)	+= sec_cmd.o
++obj-$(CONFIG_SEC_DEBUG_TSP_LOG) += sec_tsp_log.o
++obj-$(CONFIG_INPUT_TOUCHSCREEN_TCLMV2)	+= sec_tclm_v2.o
+diff --git a/drivers/input/touchscreen/Kconfig b/drivers/input/touchscreen/Kconfig
+index a7ac0e0a3..d4b973c38 100644
+--- a/drivers/input/touchscreen/Kconfig
++++ b/drivers/input/touchscreen/Kconfig
+@@ -1369,3 +1369,6 @@ config TOUCHSCREEN_MTK_TOUCH
+ 	  To compile this dirver for used touch IC.
+ 
+ endif
++
++# --- A31 port: IST4050 ---
++source "drivers/input/touchscreen/imagis/ist4050/Kconfig"
+diff --git a/drivers/input/touchscreen/Makefile b/drivers/input/touchscreen/Makefile
+index 4d4d0fc83..9d585ae08 100755
+--- a/drivers/input/touchscreen/Makefile
++++ b/drivers/input/touchscreen/Makefile
+@@ -135,3 +135,6 @@ obj-$(CONFIG_TOUCHSCREEN_MTK_FOCALTECH_FHD)	+= focaltech_fhd_touch/
+ obj-$(CONFIG_TOUCHSCREEN_MTK_SYNAPTICS_I2C_RMI4)	+=  synaptics_i2c_rmi4/
+ TOUCH_LISTS := $(subst ",,$(CONFIG_TOUCHSCREEN_MTK_TOUCH))
+ obj-y += $(foreach TOUCH,$(TOUCH_LISTS),$(TOUCH)/)
++
++# --- A31 port: IST4050 ---
++obj-$(CONFIG_TOUCHSCREEN_IST4050)	+= imagis/ist4050/
+diff --git a/drivers/mfd/Kconfig b/drivers/mfd/Kconfig
+index 65c97dd7d..43f1284ea 100644
+--- a/drivers/mfd/Kconfig
++++ b/drivers/mfd/Kconfig
+@@ -1956,5 +1956,17 @@ config RAVE_SP_CORE
+ 	  Select this to get support for the Supervisory Processor
+ 	  device found on several devices in RAVE line of hardware.
+ 
++
++# --- A31 port: S2MU106 MFD ---
++config MFD_S2MU106
++	bool "SAMSUNG Electronics IF PMIC Series Support"
++	depends on I2C=y
++	select MFD_CORE
++	help
++	  Support for the Samsung Electronics MFD series.
++	  This driver provides common support for accessing the device,
++	  additional drivers must be enabled in order to use the functionality
++	  of the device
++
+ endmenu
+ endif
+diff --git a/drivers/nfc/Kconfig b/drivers/nfc/Kconfig
+index 66acf7182..6671d63be 100644
+--- a/drivers/nfc/Kconfig
++++ b/drivers/nfc/Kconfig
+@@ -59,4 +59,17 @@ source "drivers/nfc/st-nci/Kconfig"
+ source "drivers/nfc/nxp-nci/Kconfig"
+ source "drivers/nfc/s3fwrn5/Kconfig"
+ source "drivers/nfc/st95hf/Kconfig"
++
++# --- A31 port: sec_nfc ---
++config SEC_NFC
++	bool "Samsung NFC driver"
++	default n
++	help
++	  SAMSUNG NFC Driver.
++	  This driver provides support for SAMSUNG NFC products.
++	  You should select your NFC product and interface.
++
++	  Say Y here to compile support for SAMSUNG NFC driver into the
++	  kernel.
++
+ endmenu
+diff --git a/drivers/nfc/Makefile b/drivers/nfc/Makefile
+index 711a6030a..0d773aadd 100644
+--- a/drivers/nfc/Makefile
++++ b/drivers/nfc/Makefile
+@@ -18,3 +18,6 @@ obj-$(CONFIG_NFC_ST_NCI)	+= st-nci/
+ obj-$(CONFIG_NFC_NXP_NCI)	+= nxp-nci/
+ obj-$(CONFIG_NFC_S3FWRN5)	+= s3fwrn5/
+ obj-$(CONFIG_NFC_ST95HF)	+= st95hf/
++
++# --- A31 port: sec_nfc ---
++obj-$(CONFIG_SEC_NFC)			+= sec_nfc.o
+diff --git a/drivers/usb/Kconfig b/drivers/usb/Kconfig
+index a9f12a52f..fe6c1e92b 100644
+--- a/drivers/usb/Kconfig
++++ b/drivers/usb/Kconfig
+@@ -205,3 +205,6 @@ config USB_ULPI_BUS
+ 	  be called ulpi.
+ 
+ endif # USB_SUPPORT
++
++# --- A31 port: usb_notify ---
++source "drivers/usb/notify/Kconfig"
+diff --git a/drivers/usb/Makefile b/drivers/usb/Makefile
+index 7d1b8c82b..e1ff8dddc 100644
+--- a/drivers/usb/Makefile
++++ b/drivers/usb/Makefile
+@@ -67,3 +67,6 @@ obj-$(CONFIG_USBIP_CORE)	+= usbip/
+ obj-$(CONFIG_TYPEC)		+= typec/
+ 
+ obj-$(CONFIG_USB_ROLE_SWITCH)	+= roles/
++
++# --- A31 port: usb_notify ---
++obj-$(CONFIG_USB_NOTIFY_LAYER)	+= notify/
+diff --git a/fs/Kconfig b/fs/Kconfig
+index 1964fc1f6..f2b8cec18 100644
+--- a/fs/Kconfig
++++ b/fs/Kconfig
+@@ -143,6 +143,7 @@ if BLOCK
+ menu "DOS/FAT/EXFAT/NT Filesystems"
+ 
+ source "fs/fat/Kconfig"
++source "fs/sdfat/Kconfig"
+ source "fs/exfat/Kconfig"
+ source "fs/ntfs/Kconfig"
+ 
+diff --git a/fs/Makefile b/fs/Makefile
+index 9dee1ce94..c89cad1d6 100644
+--- a/fs/Makefile
++++ b/fs/Makefile
+@@ -135,3 +135,6 @@ obj-$(CONFIG_CEPH_FS)		+= ceph/
+ obj-$(CONFIG_PSTORE)		+= pstore/
+ obj-$(CONFIG_EFIVAR_FS)		+= efivarfs/
+ obj-$(CONFIG_EROFS_FS)		+= erofs/
++
++# --- A31 port: sdfat ---
++obj-$(CONFIG_SDFAT_FS)		+= sdfat/
+diff --git a/security/Kconfig b/security/Kconfig
+index f7f12755e..bc647e203 100644
+--- a/security/Kconfig
++++ b/security/Kconfig
+@@ -302,5 +302,28 @@ config LSM
+ 
+ source "security/Kconfig.hardening"
+ 
++
++# --- A31 port: SDP ---
++config SDP
++	bool "Enables SDP"
++	default n
++	help
++	Sensitive Data Protection. Enabled for devices with Samsung Knox.
++
++config SDP_KEY_DUMP
++	bool "SDP KEY DUMP"
++	default n
++	help
++	For dumping sensitive keying material for CC Certification test.
++	Enabled only for eng and userdebug builds.
++
++
++# --- A31 port: Samsung security ---
++source "security/samsung/defex_lsm/Kconfig"
++source "security/samsung/proca/Kconfig"
++source "security/samsung/proca/gaf/Kconfig"
++source "security/samsung/dsms/Kconfig"
++source "security/samsung/five/Kconfig"
++
+ endmenu
+ 
+diff --git a/security/Makefile b/security/Makefile
+index eb00547cc..4d498ce79 100644
+--- a/security/Makefile
++++ b/security/Makefile
+@@ -36,3 +36,11 @@ obj-$(CONFIG_BPF_LSM)			+= bpf/
+ # Object integrity file lists
+ subdir-$(CONFIG_INTEGRITY)		+= integrity
+ obj-$(CONFIG_INTEGRITY)			+= integrity/
++
++# --- A31 port: Samsung security ---
++obj-$(CONFIG_SDP) += sdp/
++obj-y += samsung/defex_lsm/
++obj-y += samsung/proca/
++obj-y += samsung/proca/gaf/
++obj-y += samsung/dsms/
++obj-y += samsung/five/
+diff --git a/sound/soc/codecs/Kconfig b/sound/soc/codecs/Kconfig
+index 66d6f4875..c34644880 100644
+--- a/sound/soc/codecs/Kconfig
++++ b/sound/soc/codecs/Kconfig
+@@ -1461,4 +1461,15 @@ config SND_SOC_SMARTPAINFO
+ 
+ source "sound/soc/codecs/cs35l43/Kconfig"
+ 
++
++# --- A31 port: sma1303 ---
++config SND_SOC_SMA1303
++	tristate "Silicon Mitus SMA1303 speaker amplifier"
++	depends on I2C
++	help
++	  Config of SMA1303. It is a Smart power
++	  amplifier which contain speaker protection,
++	  multi-band DRC, equalizer function. It would
++	  be set to yes if device with SMA1303 on it.
++
+ endmenu
+diff --git a/sound/soc/codecs/Makefile b/sound/soc/codecs/Makefile
+index 2270fde34..744cf2f14 100644
+--- a/sound/soc/codecs/Makefile
++++ b/sound/soc/codecs/Makefile
+@@ -563,3 +563,7 @@ ifneq (, $(filter y,$(CONFIG_SND_SOC_MT6358) $(CONFIG_SND_SOC_MT6366)))
+   subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
+   subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/accdet/mt6358
+ endif
++
++# --- A31 port: sma1303 ---
++snd-soc-sma1303-objs := sma1303.o
++obj-$(CONFIG_SND_SOC_SMA1303)	+= snd-soc-sma1303.o
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+From a21dc8c4b9c53062f292c77e8daed902c497fccc Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 10:07:22 +0000
+Subject: [PATCH 19/29] a31: connectivity EMI base owned by adapter when wmt is
+ built-in
+
+---
+ .../wmt_drv/common_main/platform/mtk_wcn_consys_hw.c          | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/mediatek/connectivity/wmt_drv/common_main/platform/mtk_wcn_consys_hw.c b/drivers/misc/mediatek/connectivity/wmt_drv/common_main/platform/mtk_wcn_consys_hw.c
+index 021cfad87..a5c53b52e 100644
+--- a/drivers/misc/mediatek/connectivity/wmt_drv/common_main/platform/mtk_wcn_consys_hw.c
++++ b/drivers/misc/mediatek/connectivity/wmt_drv/common_main/platform/mtk_wcn_consys_hw.c
+@@ -85,7 +85,7 @@ P_WMT_CONSYS_IC_OPS wmt_consys_ic_ops;
+ 
+ struct platform_device *g_pdev;
+ 
+-#if defined(ALLOCATE_CONNSYS_EMI_FROM_KO) && !defined(CONFIG_MTK_EXTRA_CONN_DRV_BUILD_IN)
++#if defined(ALLOCATE_CONNSYS_EMI_FROM_KO) && defined(MODULE)
+ phys_addr_t gConEmiPhyBase;
+ EXPORT_SYMBOL(gConEmiPhyBase);
+ unsigned long long gConEmiSize;
+@@ -235,7 +235,7 @@ static VOID mtk_wcn_get_regmap(struct platform_device *pdev)
+ 
+ static INT32 wmt_allocate_connsys_emi(struct platform_device *pdev)
+ {
+-#if defined(ALLOCATE_CONNSYS_EMI_FROM_KO) && !defined(CONFIG_MTK_EXTRA_CONN_DRV_BUILD_IN)
++#if defined(ALLOCATE_CONNSYS_EMI_FROM_KO) && defined(MODULE)
+ 	struct device_node *np;
+ 	struct reserved_mem *rmem;
+ 
+-- 
+2.43.0
+

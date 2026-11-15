@@ -1,0 +1,143 @@
+A31 KERNEL PORT — FULL PROJECT CONTEXT (handoff for a new Claude Code session)
+===============================================================================
+Read this whole file first. It replaces the previous conversation. Be token-efficient:
+short answers, act directly, no re-deriving facts written here.
+
+0. WHO / WHAT
+-------------
+User: ethical/own-device lab, Galaxy A31 SM-A315F, rooted (Magisk 30), Odin + adb on a Windows
+laptop. Speaks Levantine Arabic. Wants: a strong modern kernel for A31 (target 5.10 GKI, later
+6.x), EROFS fully supported (all compressions), plus a vendor upgraded to run Android 16/17 ROMs
+(UN1CA One UI 8 port, GSIs) with everything working (SIM/network, SD, touch, sensors, camera...).
+The new local session CAN control the phone via adb. The previous (cloud) session could not.
+
+Device facts
+- SoC MT6768 (Helio P65), 4 GB RAM, eMMC, PMIC MT6358, Samsung S2MU106 (charger/FG/MUIC/PDIC),
+  touch Imagis IST4050, panel via Samsung smcdsd (A31), Trustonic TEE 410, Mali-G52 MC2
+  (vendor userspace = mali bifrost r25p0), amp SMA1303, cameras s5kgm2/hi2021q/s5k4hayx/gc5035.
+- Bootloader A315FXXS5DXB1. Boot image header v2, page 2048. Kernel @0x40080000,
+  ramdisk @0x47c80000, tags/dtb @0x4bc80000. dtb inside image is an Android DT-table
+  (magic 0xd7b7ab1e) with ONE entry; board overlay lives in the dtbo partition.
+- Stock vendor: A315FXXS5DXB1 (Android 12, ext4). fstab: /data f2fs with
+  `inlinecrypt` + `fileencryption=aes-256-xts:aes-256-cts:v1`; /keydata & /keyrefuge (Samsung SDP).
+- Vendor ships 10 kernel modules built for 4.14 (will NOT load on a new kernel):
+  bt_drv_connac1x, connfem, fmradio_drv_mt6631, fpsgo, gps_drv, met, udc_lib, wlan_drv_gen4m,
+  wmt_chrdev_wifi, wmt_drv. In the new kernel the connectivity drivers are built-in; vendor init
+  `insmod` lines must later be removed (vendor work).
+- Cmdline from LK contains `sec_debug=0` (debug level LOW) -> Samsung shows only LK log in
+  /proc/last_kmsg. User has just set *#9900# Debug level = MID (to verify: /proc/cmdline).
+- LK memory map (from LK log): ram_console 0x4d000000 (64K), pstore 0x4d010000 (0xe0000),
+  sec-log 0x46C00000 (2M), sec-lastklog 0x46E00000 (2M), sec-logger 0x47000000 (4M).
+
+Currently on the phone (working state):
+- boot  = boot_atrocious_public0_magisk.img (Atrocious V6 4.14.186 + Magisk 30), md5 1444b8ed52b8d4172a770aee7587e48b
+- recovery = user's old working TWRP (ext4 one). The newer "public0" TWRP stopped flashing for him.
+
+1. KERNEL HISTORY (before this work)
+------------------------------------
+- Atrocious V6 public0 (4.14.186) = daily driver, works. Source github.com/SN-Abdullah-Al-Noman/SM-A315F
+  @66a5095b6 (+1 config commit). Toolchain clang r383902 + GCC 4.9.
+- Lucreticus 4.14.357 + eBPF ~5.15 (github.com/stardustps/kernel_samsung_mt6768-lucreticus @54c11cfc0
+  + 6 A31 commits): boots, decrypts /data, but USB/ADB broken. Notes: UH/RKP must be OFF (hang
+  after "jump to linux kernel"), INPUT_SEC_INPUT off, needs SDP+FSCRYPT_SDP+MMC_CRYPTO_LEGACY.
+- Switching kernels on encrypted /data can corrupt /data/apex/decompressed (delete it from TWRP).
+
+2. PLAN THAT WAS CHOSEN
+-----------------------
+Stage 1 (done to "builds"): A31 on Xiaomi Redmi 12 "fire" tree 4.19.325-cip
+  (github.com/mt6768-dev/android_kernel_xiaomi_fire, branch lineage-23.2, commit 9937de9f6 —
+  LineageOS 23.2 = Android 16 runs on it; complete MT6768 platform incl. legacy display and
+  mali bifrost r25p0).
+Stage 2 (not started): move to Samsung A17 4G (SM-A175F) kernel 5.10.233 GKI
+  (github.com/physwizz/A175f-V-u1, kernel-5.10; A175F Android 16 uses 6.12.23).
+  MT6768 5.10 platform bits exist in github.com/OnePlusOSS/android_kernel_5.10_oneplus_mt6983
+  (clk/pinctrl/spm/mcdi/cpufreq_v2/dcm/sound/gpufreq), but not display/ccci/m4u/emi -> those
+  must be forward-ported from the 4.19 tree. Samsung MT6768 6.6 exists:
+  github.com/mt6768-mainline/android_kernel_samsung_mt6768 (Galaxy A05, TEEGRIS, mali r49p1).
+  Xiaomi "fire" open source is only 4.19 (fire-t-oss); its 6.6.30 kernel is closed.
+Rule used everywhere: drivers that talk to the A31 vendor/firmware keep the A31 (4.14) version
+and are fixed for the newer core; platform core comes from the newer tree.
+
+3. WHAT THE 4.19 PORT CONTAINS (28 commits on 9937de9f6, in patches.tar.xz)
+---------------------------------------------------------------------------
+- Samsung drivers from Atrocious: battery/charger/FG S2MU106, MUIC, usb_notify, typec slsi/manager,
+  mfd slsi, s2mpb03, pmic_class, sec_thermistor, IST4050 touch + sec_cmd/tclm, fingerprint,
+  sensors (grip), sti, switch, vibrator, sec_nfc, SMA1303 (converted to snd_soc_component),
+  sdfat, security/samsung (DEFEX/PROCA/FIVE/DSMS), security/sdp, sensorhub, input_boost,
+  leds-s2mu106, Samsung audio sysfs.
+- A31 versions (vendor/firmware ABI): video(disp mt6768 + smcdsd), lcm, ext_disp, mtk_sync,
+  m4u, cmdq, mmdvfs, imgsensor, cam_cal, cameraisp, ccu, flashlight, usb20, accdet, eccci,
+  ccci_util, connectivity (built-in), btif, sspm, scp, audio_ipi, eMMC host ComboA (fire's has no
+  mt6768), watchdog (toprgu; fire's mtk_wdt does not match "mediatek,toprgu"), ram_console
+  (Samsung LK reads reboot reason fields from it), boot, boot_reason, chip, f_accessory,
+  USB gadget configfs.c (android0 composite), Trustonic gud 410 (fire core + A31 gfp fix + TUI).
+- Kept from 4.19: core, ASoC mediatek (+ Samsung SMA1303 hooks merged), ccmni (+flush timer),
+  mrdump/aee (mboot_params disabled when MTK_RAM_CONSOLE), GED/mali r25p0, clk/pinctrl/spm etc.
+- Compat layers added: CONFIG_A31_LEGACY_TIMER_API (init_timer/setup_timer/.data via
+  legacy_function trampoline), MTK pm_qos -> mtk_pm_qos conversion (EMI_OPP->DDR_OPP),
+  wakeup_source_init/trash, Samsung power_supply.h (+USB_TYPE, fwnode), Samsung input codes,
+  sec input log macros (include/linux/input/sec_input_log.h), pr_auto fallbacks, SMCCC
+  mt_secure_call_all, sched_ctl shim, AEE stubs, pwrap_disable, ALWAYS_PERMISSIVE (SELinux),
+  FSCRYPT_SDP merged into fs/crypto + VFS hooks, sec_log mirrored through a console (writes the
+  kernel log into Samsung sec-log RAM 0x46C00000).
+- Disabled on purpose: UH/RKP, KPERFMON, MTK_EMMC_HW_CQ (needs 4.14 mmc core), Samsung eMMC
+  error sysfs (needs Samsung mmc core err_log), SEC_DEBUG_AUTO_COMMENT, MTK_AEE_HANGDET,
+  MTK_CM_MGR (cm_mgr_v1 used), MEDIATEK_WATCHDOG, EXTCON_MTK_USB, MMC_CQHCI, Xiaomi pn557/
+  cooler/hbm/mv_card hacks. Input booster only partly wired (no event feed).
+- DTB: A31 mt6768.dts rebuilt in the new tree is BYTE-IDENTICAL to the stock boot dtb (229
+  __symbols__ so the stock dtbo applies). The TWRP image keeps its own dtb/dtbo.
+- Config: arch/arm64/configs/a31_defconfig (A31 defconfig + a31_4.19.fragment). EROFS_FS +
+  EROFS_FS_ZIP on, F2FS, FS_ENCRYPTION_INLINE_CRYPT, MMC_CRYPTO_LEGACY, IKCONFIG_PROC.
+- Build: clang 18 / ld.lld, ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu-,
+  KCFLAGS with -Werror=implicit-function-declaration,int-conversion,incompatible-pointer-types
+  (never use -w: it hid real bugs). `make O=out a31_defconfig && make O=out -j$(nproc) Image.gz`.
+  Result: Linux 4.19.325-cip124-st8-a31-4.19, Image.gz 18.2 MB, uncompressed image ends at
+  0x42814000 (same as Atrocious) -> size/placement is NOT the problem.
+
+4. TESTS ON THE PHONE (all failed the same way)
+------------------------------------------------
+- test  : TWRP ramdisk/dtb/dtbo + 4.19 kernel.  test2 : same + sec_log console mirror +
+  cmdline `initcall_debug ignore_loglevel`.  test3 : test2 + ramoops cmdline (DON'T USE).
+- Symptom: Samsung logo + warning ~3 s, a thin GREEN LINE flashes for a fraction of a second,
+  reboot -> loop. `adb reboot recovery` makes it loop into recovery (boot-recovery command);
+  enter recovery with keys instead (power off, Vol Up + Power, USB connected).
+- LK RAM_CONSOLE on next boot: wdt_status 0x0, exp_type 0x0 (no WDT/KE recorded) -> the kernel
+  dies very early (before ram_console/aee set anything) or the reset is not seen by LK.
+- Adding `ramoops.mem_address=0x4d010000 ...` to the cmdline makes EVEN the stock Atrocious boot
+  loop with the same green flash -> never touch boot/cmdline with ramoops again.
+- Logs obtained so far (/proc/last_kmsg) contain only the LK log, because sec_debug=0.
+
+5. FILES (from the cloud session, /home/user/a31_port)
+------------------------------------------------------
+- Image_a31_4.19_latest.gz      md5 a63c02a6bfcfb4da4bd81be8bc83f117 (latest kernel, = test2's kernel)
+- recovery_twrp_a31_4.19_test2.img md5 6dc322f8cf67f60b2113f9405be30fdc (TWRP + latest kernel)
+- patches.tar.xz (28 git format-patch on fire 9937de9f6), a31_defconfig, tools.tar.gz
+  (a31_bootimg.py: info/unpack/repack header v0-v2, byte-identical repack verified;
+   dttable.py: wrap/unwrap DT table; build_dtb.sh; merge3.py; transplant_ifdefs.py;
+   port_pmqos.py; audit_merge.py; kflags.env), HANDOFF_LOCAL.md (phone-side procedure).
+- Repack TWRP with a new kernel:
+  python a31_bootimg.py repack old_twrp.img out.img --kernel Image.gz [--cmdline "..."]
+
+6. IMMEDIATE NEXT STEP (phone side, do this first)
+--------------------------------------------------
+Goal: get the 4.19 kernel's own log.
+1. Verify debug level MID: `adb shell cat /proc/cmdline` should no longer show `sec_debug=0`.
+2. Backup current recovery to the laptop, then flash ONLY recovery with test2:
+   dd if=/sdcard/recovery_twrp_a31_4.19_test2.img of=/dev/block/by-name/recovery
+   (in TWRP no `su`; in Android use `adb shell` -> `su` -> command if `su -c` fails).
+3. Power off, enter recovery with keys. If an "Upload mode" screen shows text, photograph it,
+   then Vol Down + Power ~7 s. It should then boot Android (not recovery).
+4. Immediately: cat /proc/last_kmsg > last_kmsg_419.txt (also /proc/cmdline). Look for
+   "4.19.325" and the last `initcall` / `Unable to handle` / `Kernel panic` lines.
+5. Restore the old TWRP to recovery. NEVER write boot/dtbo/vbmeta/super/userdata/misc.
+If still only LK lines: next idea is a tiny early-boot test (disable large driver groups via
+config, e.g. display/ccci/connectivity) and bisect by subsystem; or keep panic from rebooting
+(panic=0) so the screen stays and the phone can be photographed.
+
+7. LIKELY SUSPECTS FOR THE EARLY CRASH (unverified)
+---------------------------------------------------
+- Very early: memory reservations/dtb parsing differences 4.14 vs 4.19 (LK-injected nodes,
+  reserved-memory no-map regions), arch timer / GIC, TEE/GenieZone (MTK_ENABLE_GENIEZONE,
+  trusty interrupt map), A31 watchdog init, ram_console early init, CMDQ/m4u secure calls.
+- The green line suggests the display controller is touched (LK framebuffer handover or disp
+  driver probe) right before the reset.

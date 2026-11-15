@@ -1,0 +1,4260 @@
+From d14f661c0ef6fb26612d905d43d534ac68a05117 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 08:49:14 +0000
+Subject: [PATCH 09/29] a31: eMMC MTK_PRO driver selection, FSCRYPT_SDP
+ Kconfig/Makefile, ALWAYS_PERMISSIVE for 4.19, input booster, S2MU106 flash
+ LED, Samsung audio sysfs, NFC
+
+---
+ arch/arm64/configs/a31_4.19.fragment          |    8 +-
+ arch/arm64/configs/a31_defconfig              |    7 +-
+ drivers/Kconfig                               |    3 +
+ drivers/Makefile                              |    2 +
+ drivers/input/input_boost/Kconfig             |   46 +
+ drivers/input/input_boost/Makefile            |   18 +
+ drivers/input/input_boost/evdev_booster.c     |  323 +++++
+ drivers/input/input_boost/input_booster.c     |  931 +++++++++++++
+ drivers/input/input_boost/input_booster_lsi.c |  251 ++++
+ drivers/input/input_boost/input_booster_mtk.c |  127 ++
+ drivers/input/input_boost/input_booster_qc.c  |  253 ++++
+ drivers/leds/Kconfig                          |    8 +
+ drivers/leds/Makefile                         |    2 +
+ drivers/leds/leds-s2mu106.c                   | 1213 +++++++++++++++++
+ fs/crypto/Kconfig                             |    9 +
+ fs/crypto/Makefile                            |    1 +
+ security/selinux/Kconfig                      |   14 +
+ security/selinux/hooks.c                      |    6 +
+ security/selinux/selinuxfs.c                  |    5 +
+ sound/soc/samsung/Kconfig                     |    6 +
+ sound/soc/samsung/Makefile                    |    4 +
+ sound/soc/samsung/jack_accdet_sysfs_cb.c      |   73 +
+ sound/soc/samsung/jack_accdet_sysfs_cb.h      |   11 +
+ sound/soc/samsung/sec_audio_sysfs.c           |  693 ++++++++++
+ 24 files changed, 4012 insertions(+), 2 deletions(-)
+ create mode 100644 drivers/input/input_boost/Kconfig
+ create mode 100644 drivers/input/input_boost/Makefile
+ create mode 100644 drivers/input/input_boost/evdev_booster.c
+ create mode 100644 drivers/input/input_boost/input_booster.c
+ create mode 100644 drivers/input/input_boost/input_booster_lsi.c
+ create mode 100644 drivers/input/input_boost/input_booster_mtk.c
+ create mode 100644 drivers/input/input_boost/input_booster_qc.c
+ create mode 100644 drivers/leds/leds-s2mu106.c
+ create mode 100644 sound/soc/samsung/jack_accdet_sysfs_cb.c
+ create mode 100644 sound/soc/samsung/jack_accdet_sysfs_cb.h
+ create mode 100644 sound/soc/samsung/sec_audio_sysfs.c
+
+diff --git a/arch/arm64/configs/a31_4.19.fragment b/arch/arm64/configs/a31_4.19.fragment
+index 1f74cb745..18112cd53 100644
+--- a/arch/arm64/configs/a31_4.19.fragment
++++ b/arch/arm64/configs/a31_4.19.fragment
+@@ -37,7 +37,6 @@ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+ # MTK 4.19 platform core (fire_defconfig choices)
+ CONFIG_MEDIATEK_WATCHDOG=y
+-CONFIG_MMC_MTK=y
+ CONFIG_EXTCON_MTK_USB=y
+ CONFIG_GENERIC_PHY=y
+ CONFIG_CPU_THERMAL=y
+@@ -68,3 +67,10 @@ CONFIG_TRUSTONIC_TRUSTED_UI=y
+ CONFIG_MTK_TEE_GP_SUPPORT=y
+ CONFIG_SEC_NFC=y
+ CONFIG_SUPPORT_WAKEUP_REGISTER=y
++# eMMC: MediaTek proprietary host driver (as stock A31)
++# CONFIG_MMC_MTK is not set
++CONFIG_MMC_MTK_PRO=y
++CONFIG_NFC=y
++CONFIG_ALWAYS_PERMISSIVE=y
++CONFIG_STACKPROTECTOR=y
++CONFIG_STACKPROTECTOR_STRONG=y
+diff --git a/arch/arm64/configs/a31_defconfig b/arch/arm64/configs/a31_defconfig
+index 70b7d75af..4cd5e2539 100644
+--- a/arch/arm64/configs/a31_defconfig
++++ b/arch/arm64/configs/a31_defconfig
+@@ -6007,7 +6007,6 @@ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+ # MTK 4.19 platform core (fire_defconfig choices)
+ CONFIG_MEDIATEK_WATCHDOG=y
+-CONFIG_MMC_MTK=y
+ CONFIG_EXTCON_MTK_USB=y
+ CONFIG_GENERIC_PHY=y
+ CONFIG_CPU_THERMAL=y
+@@ -6038,3 +6037,9 @@ CONFIG_TRUSTONIC_TRUSTED_UI=y
+ CONFIG_MTK_TEE_GP_SUPPORT=y
+ CONFIG_SEC_NFC=y
+ CONFIG_SUPPORT_WAKEUP_REGISTER=y
++# CONFIG_MMC_MTK is not set
++CONFIG_MMC_MTK_PRO=y
++CONFIG_NFC=y
++CONFIG_ALWAYS_PERMISSIVE=y
++CONFIG_STACKPROTECTOR=y
++CONFIG_STACKPROTECTOR_STRONG=y
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index ca9983633..c32eb42f8 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -263,4 +263,7 @@ source "drivers/sensorhub/sensor/Kconfig"
+ source "drivers/sensorhub/sensorhub/Kconfig"
+ source "drivers/sensorhub/vendor/Kconfig"
+ 
++# --- A31 port: input booster ---
++source "drivers/input/input_boost/Kconfig"
++
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 21969ff1f..c54f59adb 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -221,3 +221,5 @@ obj-y += battery/common/
+ 
+ # --- A31 port: Samsung sensorhub ---
+ obj-y += sensorhub/
++# --- A31 port ---
++obj-y += input/input_boost/
+diff --git a/drivers/input/input_boost/Kconfig b/drivers/input/input_boost/Kconfig
+new file mode 100644
+index 000000000..85a28d3eb
+--- /dev/null
++++ b/drivers/input/input_boost/Kconfig
+@@ -0,0 +1,46 @@
++config SEC_INPUT_BOOSTER
++	tristate "SEC INPUT BOOSTER"
++	depends on INPUT_EVDEV
++	default n
++	help
++	  Say Y here if you enable input boosting for various input device
++	  such as touch.
++
++	  Say N here if you disable input boosting.
++
++	  If unsure, say Y.
++
++config SEC_INPUT_BOOSTER_QC
++	bool "SEC INPUT BOOSTER QC"
++	depends on SEC_INPUT_BOOSTER
++	default n
++	help
++	  Say Y here if you enable input boosting of QC under QC chipset
++
++	  Say N here if you disable input boosting of QC
++
++	  If unsure, say N.
++
++config SEC_INPUT_BOOSTER_SLSI
++	bool "SEC INPUT BOOSTER SLSI"
++	depends on SEC_INPUT_BOOSTER
++	default n
++	help
++	  Say Y here if you enable input boosting of SLSI under SLSI chipset
++	  such as touch.
++
++	  Say N here if you disable input boosting of SLSI
++
++	  If unsure, say N.
++
++config SEC_INPUT_BOOSTER_MTK
++	bool "SEC INPUT BOOSTER MTK"
++	depends on SEC_INPUT_BOOSTER
++	default n
++	help
++	  Say Y here if you enable input boosting of MTK under MTK chipset
++	  such as touch.
++
++	  Say N here if you disable input boosting of MTK
++
++	  If unsure, say N.
+\ No newline at end of file
+diff --git a/drivers/input/input_boost/Makefile b/drivers/input/input_boost/Makefile
+new file mode 100644
+index 000000000..d8fdb3729
+--- /dev/null
++++ b/drivers/input/input_boost/Makefile
+@@ -0,0 +1,18 @@
++obj-$(CONFIG_SEC_INPUT_BOOSTER)	+= input_booster_lkm.o
++input_booster_lkm-$(CONFIG_SEC_INPUT_BOOSTER)	+= evdev_booster.o input_booster.o
++input_booster_lkm-$(CONFIG_SEC_INPUT_BOOSTER_QC)	+= input_booster_qc.o
++input_booster_lkm-$(CONFIG_SEC_INPUT_BOOSTER_SLSI)	+= input_booster_lsi.o
++input_booster_lkm-$(CONFIG_SEC_INPUT_BOOSTER_MTK)	+= input_booster_mtk.o
++# DDRfreq limit API
++ifdef CONFIG_MACH_MT6739
++ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/
++endif
++ifdef CONFIG_MACH_MT6853
++ccflags-y += -I$(srctree)/drivers/misc/mediatek/sched/
++endif
++ifdef CONFIG_MACH_MT6768
++ccflags-y += -I$(srctree)/drivers/misc/mediatek/sched/
++endif
++ifdef CONFIG_MACH_MT6877
++ccflags-y += -I$(srctree)/drivers/misc/mediatek/sched/
++endif
+\ No newline at end of file
+diff --git a/drivers/input/input_boost/evdev_booster.c b/drivers/input/input_boost/evdev_booster.c
+new file mode 100644
+index 000000000..e4a58c5aa
+--- /dev/null
++++ b/drivers/input/input_boost/evdev_booster.c
+@@ -0,0 +1,323 @@
++#define ITAG " [Evdev Booster] "
++#include <linux/input/input_booster.h>
++
++#include <linux/input.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/device.h>
++#include <linux/syscalls.h>
++
++#if IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER)
++spinlock_t ib_ev_lock;
++struct workqueue_struct *ev_unbound_wq;
++static struct device *evbst_dev;
++
++void input_booster(struct ib_event_data *ib_ev_data);
++
++int evdev_ib_notify_callback(struct notifier_block *nb,
++	unsigned long event_type, void *data)
++{
++	if (ib_init_succeed) {
++		spin_lock(&ib_ev_lock);
++		struct ib_event_data *ib_ev_data = data;
++
++		switch (event_type) {
++		case IB_EVENT_TOUCH_BOOSTER:
++			input_booster(ib_ev_data);
++			break;
++		default:
++			break;
++		}
++		spin_unlock(&ib_ev_lock);
++	}
++
++	return 0;
++}
++
++static struct notifier_block ib_event_notifier = {
++	 .notifier_call = evdev_ib_notify_callback,
++	 .priority = 1,
++};
++
++int chk_next_data(const struct input_value *vals, int next_idx, int input_type)
++{
++	int ret_val = 0;
++	int next_type = -1;
++	int next_code = -1;
++
++	next_type = vals[next_idx].type;
++	next_code = vals[next_idx].code;
++
++	switch (input_type) {
++	case BTN_TOUCH:
++		if ((next_type == EV_ABS) && (next_code == ABS_PRESSURE))
++			ret_val = 1;
++		break;
++	case EV_KEY:
++		ret_val = 1;
++		break;
++	default:
++		break;
++	}
++
++	return ret_val;
++}
++
++int chk_boost_on_off(const struct input_value *vals, int idx, int dev_type)
++{
++	int ret_val = -1;
++
++	if (dev_type < 0)
++		return ret_val;
++
++	/* In case of SPEN or HOVER, it must be empty multi event
++	 * Before starting input booster.
++	 */
++	if (dev_type == SPEN || dev_type == HOVER) {
++		if (!evdev_mt_event[dev_type] && vals[idx].value)
++			ret_val = 1;
++		else if (evdev_mt_event[dev_type] && !vals[idx].value)
++			ret_val = 0;
++	} else if (dev_type == TOUCH || dev_type == MULTI_TOUCH) {
++		if (vals[idx].value >= 0)
++			ret_val = 1;
++		else
++			ret_val = 0;
++	} else if (vals[idx].value > 0)
++		ret_val = 1;
++	else if (vals[idx].value <= 0)
++		ret_val = 0;
++
++	return ret_val;
++}
++
++/*
++ * get_device_type : Define type of device for input_booster.
++ * device_type : Current device that in which input events triggered.
++ * keyId : Each device get given unique keyid using Type, Code, Slot values
++ *  to identify which booster will be triggered.
++ * cur_idx : Pointing current handling index from input booster.
++ *  cur_idx will be updated when cur_idx is same as head.
++ * vals : Event set to determine what booster would be triggered.
++ * evt_cnt : Total count of event in this time.
++ */
++int get_device_type(int *device_type, unsigned int *keyId,
++					int *cur_idx, const struct input_value *vals, int evt_cnt)
++{
++	int i;
++	int ret_val = -1;
++	int dev_type = NONE_TYPE_DEVICE;
++	int uniq_slot = 0;
++	int next_idx = 0 ;
++	int target_idx = 0;
++
++	if (evt_cnt > MAX_EVENTS) {
++		dev_warn_ratelimited(evbst_dev, "Exceed max event number\n");
++		return ret_val;
++	}
++
++	/* Initializing device type before finding the proper device type. */
++	*device_type = dev_type;
++
++	for (i = *cur_idx; i < evt_cnt; i++) {
++		pr_booster(" %s Type : %d, Code : %d, Value : %d, idx : %d\n",
++			"Input Data || ", vals[i].type,
++			vals[i].code, vals[i].value, i);
++
++		if (vals[i].type == EV_SYN || vals[i].code == SYN_REPORT) {
++			break;
++		}
++
++		if (vals[i].type == EV_KEY) {
++			target_idx = i;
++			switch (vals[i].code) {
++			case BTN_TOUCH:
++				next_idx = i+1;
++				if (!chk_next_data(vals, next_idx, BTN_TOUCH))
++					break;
++				dev_type = SPEN;
++				break;
++			case BTN_TOOL_PEN:
++				dev_type = HOVER;
++				break;
++			case KEY_BACK:
++			case KEY_HOMEPAGE:
++				dev_type = TOUCH_KEY;
++				break;
++			case KEY_VOLUMEUP:
++			case KEY_VOLUMEDOWN:
++			case KEY_POWER:
++				dev_type = KEY;
++				break;
++			default:
++				break;
++			}
++
++		} else if (vals[i].type == EV_ABS) {
++			target_idx = i;
++			switch (vals[i].code) {
++			case ABS_MT_TRACKING_ID:
++				if (vals[i].value >= 0) {
++					evdev_mt_slot++;
++				} else {
++					evdev_mt_slot--;
++					if (evdev_mt_slot < 0) {
++						evdev_mt_slot = 0;
++						break;
++					}
++				}
++
++				if (vals[i].value >= 0) {
++					if (evdev_mt_slot == 1) {
++						dev_type = TOUCH;
++						uniq_slot = 1;
++					} else if (evdev_mt_slot == 2) {
++						dev_type = MULTI_TOUCH;
++						uniq_slot = 2;
++					}
++				} else if (vals[i].value < 0) {
++					if (evdev_mt_slot == 0) {
++						dev_type = TOUCH;
++						uniq_slot = 1;
++					} else if (evdev_mt_slot == 1) {
++						dev_type = MULTI_TOUCH;
++						uniq_slot = 2;
++					}
++				}
++
++				pr_booster("Touch Booster Trigger(%d), T(%d) C(%d) V(%d), Idx(%d), Cnt(%d)",
++							evdev_mt_slot,
++							vals[i].type, vals[i].code, vals[i].value,
++							i, evt_cnt);
++
++				break;
++			}
++		} else if (vals[i].type == EV_MSC &&
++					vals[i].code == MSC_SCAN) {
++			next_idx = i++;
++			if (!chk_next_data(vals, next_idx, EV_KEY))
++				break;
++
++			next_idx = i++;
++			target_idx = next_idx;
++			switch (vals[next_idx].code) {
++			case BTN_LEFT: /* Checking Touch Button Event */
++			case BTN_RIGHT:
++			case BTN_MIDDLE:
++				dev_type = MOUSE;
++				//Remain the last of CODE value as a uniq_slot to recognize BTN Type (LEFT, RIGHT, MIDDLE)
++				uniq_slot = vals[next_idx].code;
++				break;
++			default: /* Checking Keyboard Event */
++				dev_type = KEYBOARD;
++				uniq_slot = vals[next_idx].code;
++
++				pr_booster("KBD Booster Trigger(%d), Type(%d), Code(%d), Val(%d), Idx(%d), Cnt(%d)\n",
++						vals[next_idx].code,
++						vals[i].type, vals[i].code, vals[i].value,
++						i, evt_cnt);
++				break;
++			}
++		}
++
++		if (dev_type != NONE_TYPE_DEVICE ) {
++			*keyId = create_uniq_id(vals[i].type, vals[i].code, uniq_slot);
++			ret_val = chk_boost_on_off(vals, target_idx, dev_type);
++			pr_booster("Dev type Find(%d), KeyID(%d), enable(%d), Target(%d)\n",
++				dev_type, *keyId, ret_val, target_idx);
++			break;
++		}
++
++	}
++
++	*cur_idx = i+1;
++
++	*device_type = dev_type;
++	return ret_val;
++}
++
++// ********** Detect Events ********** //
++//void input_booster(int head, int bufsize)
++void input_booster(struct ib_event_data *ib_ev_data)
++{
++#if IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER_QC) || \
++	IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER_SLSI) || \
++	IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER_MTK)
++	int dev_type = 0;
++	int keyId = 0;
++	int cur_idx = -1;
++
++	pr_booster("%s Triggered :: evt_cnt(%d), ib_init_succeed(%d)",
++		__func__, ib_ev_data->evt_cnt, ib_init_succeed);
++
++	if (!ib_init_succeed || ib_ev_data->evt_cnt == 0) {
++		pr_err(ITAG"ev_cnt(%d) dev is Null OR dt_infor hasn't mem alloc", ib_ev_data->evt_cnt);
++		return;
++	}
++
++	cur_idx = 0;
++
++	while (cur_idx < ib_ev_data->evt_cnt) {
++		
++		keyId = 0;
++
++		int enable = get_device_type(&dev_type, &keyId, &cur_idx, ib_ev_data->vals, ib_ev_data->evt_cnt);
++		if (enable < 0 || keyId == 0) {
++			continue;
++		}
++
++		if (dev_type <= NONE_TYPE_DEVICE || dev_type >= MAX_DEVICE_TYPE_NUM) {
++			continue;
++		}
++
++		if (enable == BOOSTER_ON) {
++			evdev_mt_event[dev_type]++;
++		} else {
++			evdev_mt_event[dev_type]--;
++		}
++
++		pr_booster("Device_Type(%d), KeyId(%d), IB_Cnt(%d), enable(%d)",
++			dev_type, keyId, trigger_cnt, enable);
++
++		ib_trigger[trigger_cnt].key_id = keyId;
++		ib_trigger[trigger_cnt].event_type = enable;
++		ib_trigger[trigger_cnt].dev_type = dev_type;
++
++		queue_work(ev_unbound_wq, &(ib_trigger[trigger_cnt++].ib_trigger_work));
++		trigger_cnt = (trigger_cnt == MAX_IB_COUNT) ? 0 : trigger_cnt;
++	}
++#endif
++}
++
++static int __init ev_boost_init(void)
++{
++	pr_info(ITAG" Input Booster Module Init\n");
++	input_booster_init();
++	spin_lock_init(&ib_ev_lock);
++	ib_notifier_register(&ib_event_notifier);
++	ev_unbound_wq =
++		alloc_ordered_workqueue("ev_unbound_wq", WQ_HIGHPRI);
++
++	evbst_dev = kzalloc(sizeof(struct device), GFP_KERNEL);
++	dev_set_name(evbst_dev, "evdev_booster_dev");
++	evbst_dev->release = NULL;
++	device_register(evbst_dev);
++
++	return 0;
++}
++
++static void __exit ev_boost_exit(void)
++{
++	ib_notifier_unregister(&ib_event_notifier);
++	device_unregister(evbst_dev);
++	kfree(evbst_dev);
++	input_booster_exit();
++}
++
++late_initcall(ev_boost_init);
++module_exit(ev_boost_exit);
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("hongc.shim");
++MODULE_DESCRIPTION("EVDEV Booster in kernel");
++#endif //--CONFIG_SEC_INPUT_BOOSTER
+diff --git a/drivers/input/input_boost/input_booster.c b/drivers/input/input_boost/input_booster.c
+new file mode 100644
+index 000000000..35c69dcc7
+--- /dev/null
++++ b/drivers/input/input_boost/input_booster.c
+@@ -0,0 +1,931 @@
++#define ITAG " [Input Booster] "
++#include <linux/input/input_booster.h>
++
++#include <linux/random.h>
++#include <linux/spinlock.h>
++#include <linux/syscalls.h>
++#include <linux/module.h>
++#include <linux/init.h>
++
++#if IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER_QC) || \
++	IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER_SLSI) || \
++	IS_ENABLED(CONFIG_SEC_INPUT_BOOSTER_MTK)
++spinlock_t write_ib_lock;
++spinlock_t write_qos_lock;
++struct mutex trigger_ib_lock;
++struct mutex mem_lock;
++struct mutex rel_ib_lock;
++struct mutex sip_rel_lock;
++struct workqueue_struct *ib_handle_highwq;
++
++int total_ib_cnt;
++int ib_init_succeed;
++
++int level_value = IB_MAX;
++
++unsigned int debug_flag;
++unsigned int enable_event_booster = INIT_ZERO;
++
++// Input Booster Init Variables
++int *release_val;
++int *cpu_cluster_policy;
++int *allowed_resources;
++
++int max_resource_count;
++int device_count;
++int max_cluster_count;
++int allowed_res_count;
++struct t_ib_device_tree* ib_device_trees;
++struct t_ib_trigger* ib_trigger;
++
++struct list_head* ib_list;
++struct list_head* qos_list;
++
++// @evdev_mt_slot : save the number of inputed touch slot.
++int evdev_mt_slot;
++// @evdev_mt_event[] : save count of each boooter's events.
++int evdev_mt_event[MAX_DEVICE_TYPE_NUM];
++int trigger_cnt;
++int send_ev_enable;
++
++struct t_ib_info* find_release_ib(int dev_type, int key_id);
++struct t_ib_info* create_ib_instance(struct t_ib_trigger* p_IbTrigger, int uniqId);
++bool is_validate_uniqid(unsigned int uniq_id);
++struct t_ib_target* find_update_target(int uniq_id, int res_id);
++long get_qos_value(int res_id);
++void remove_ib_instance(struct t_ib_info* ib);
++
++void trigger_input_booster(struct work_struct *work)
++{
++	unsigned int uniq_id = 0;
++	int res_type = -1;
++
++	struct t_ib_info* ib;
++	struct t_ib_trigger *p_IbTrigger = container_of(work, struct t_ib_trigger, ib_trigger_work);
++
++	if (p_IbTrigger == NULL) {
++		return;
++	}
++
++	mutex_lock(&trigger_ib_lock);
++
++	// Input booster On/Off handling
++	if (p_IbTrigger->event_type == BOOSTER_ON) {
++
++		if (find_release_ib(p_IbTrigger->dev_type, p_IbTrigger->key_id) != NULL) {
++			pr_err(ITAG" IB Trigger :: ib already exist. Key(%d)", p_IbTrigger->key_id);
++			mutex_unlock(&trigger_ib_lock);
++			return;
++		}
++
++		// Check if uniqId exits.
++		do {
++			uniq_id = total_ib_cnt++;
++
++			if (total_ib_cnt == MAX_IB_COUNT)
++				total_ib_cnt = 0;
++
++		} while (!is_validate_uniqid(uniq_id));
++
++		// Make ib instance with all needed factor.
++		ib = create_ib_instance(p_IbTrigger, uniq_id);
++
++		pr_info(ITAG" IB Trigger Press :: IB Uniq Id(%d)", uniq_id);
++
++		if (ib == NULL) {
++			mutex_unlock(&trigger_ib_lock);
++			pr_err(ITAG" Creating ib object fail");
++			return;
++		}
++
++		ib->press_flag = FLAG_ON;
++
++		// When create ib instance, insert resource info in qos list with value 0.
++		for (res_type = 0; res_type < allowed_res_count; res_type++) {
++			if (allowed_resources[res_type] > max_resource_count) {
++				pr_err(ITAG" allow res num exceeds over max res count",
++					allowed_resources[res_type]);
++				continue;
++			}
++			if (ib != NULL &&
++				ib->ib_dt->res[allowed_resources[res_type]].head_value != 0) {
++				struct t_ib_target* tv;
++				tv = kmalloc(sizeof(struct t_ib_target), GFP_KERNEL);
++
++				if (tv == NULL)
++					continue;
++
++				tv->uniq_id = ib->uniq_id;
++				tv->value = 0;
++
++				spin_lock(&write_qos_lock);
++				list_add_tail_rcu(&(tv->list), &qos_list[allowed_resources[res_type]]);
++				spin_unlock(&write_qos_lock);
++			}
++		}
++		queue_work(ib_handle_highwq, &(ib->ib_state_work[IB_HEAD]));
++
++	} else {
++		/*  Find ib instance in the list. if not, ignore this event.
++		 *  if exists, Release flag on. Call ib's Release func.
++		 */
++
++		mutex_lock(&sip_rel_lock);
++		ib = find_release_ib(p_IbTrigger->dev_type, p_IbTrigger->key_id);
++
++		mutex_lock(&mem_lock);
++		if (ib == NULL) {
++			pr_err(ITAG" IB is null on release");
++			mutex_unlock(&mem_lock);
++			mutex_unlock(&sip_rel_lock);
++			mutex_unlock(&trigger_ib_lock);
++			return;
++		}
++		mutex_unlock(&mem_lock);
++
++		mutex_lock(&ib->lock);
++		pr_info(ITAG" IB Trigger Release :: Uniq ID(%d)", ib->uniq_id);
++		ib->rel_flag = FLAG_ON;
++		if(ib->ib_dt->tail_time == 0) {
++			pr_booster(" IB tail time is 0");
++			mutex_unlock(&ib->lock);
++			mutex_unlock(&sip_rel_lock);
++			mutex_unlock(&trigger_ib_lock);
++			return;
++		}
++
++		// If head operation is already finished, tail timeout work will be triggered.
++		if (ib->isHeadFinished) {
++			if (!delayed_work_pending(&(ib->ib_timeout_work[IB_TAIL]))) {
++				queue_delayed_work(ib_handle_highwq,
++					&(ib->ib_timeout_work[IB_TAIL]),
++					msecs_to_jiffies(ib->ib_dt->tail_time));
++			} else {
++				cancel_delayed_work(&(ib->ib_timeout_work[IB_TAIL]));
++				queue_delayed_work(ib_handle_highwq,
++					&(ib->ib_timeout_work[IB_TAIL]),
++					msecs_to_jiffies(ib->ib_dt->tail_time));
++			}
++		}
++		mutex_unlock(&ib->lock);
++		mutex_unlock(&sip_rel_lock);
++	}
++	mutex_unlock(&trigger_ib_lock);
++
++}
++
++struct t_ib_info* create_ib_instance(struct t_ib_trigger* p_IbTrigger, int uniqId)
++{
++	struct t_ib_info* ib = kmalloc(sizeof(struct t_ib_info), GFP_KERNEL);
++	int dev_type = p_IbTrigger->dev_type;
++
++	if (ib == NULL)
++		return NULL;
++
++	ib->key_id = p_IbTrigger->key_id;
++	ib->uniq_id = uniqId;
++	ib->press_flag = FLAG_OFF;
++	ib->rel_flag = FLAG_OFF;
++	ib->isHeadFinished = 0;
++
++	ib->ib_dt = &ib_device_trees[dev_type];
++
++	INIT_WORK(&ib->ib_state_work[IB_HEAD], press_state_func);
++	INIT_DELAYED_WORK(&ib->ib_timeout_work[IB_HEAD], press_timeout_func);
++	INIT_WORK(&ib->ib_state_work[IB_TAIL], release_state_func);
++	INIT_DELAYED_WORK(&ib->ib_timeout_work[IB_TAIL], release_timeout_func);
++	mutex_init(&ib->lock);
++
++	spin_lock(&write_ib_lock);
++	list_add_tail_rcu(&(ib->list), &ib_list[dev_type]);
++	spin_unlock(&write_ib_lock);
++
++	return ib;
++}
++
++bool is_validate_uniqid(unsigned int uniq_id)
++{
++	int dev_type;
++	int cnt = 0;
++	struct t_ib_info* ib = NULL;
++	rcu_read_lock();
++
++	for (dev_type = 0; dev_type < device_count; dev_type++) {
++		if (list_empty(&ib_list[dev_type])) {
++			pr_booster("IB List(%d) Empty", dev_type);
++			continue;
++		}
++		list_for_each_entry_rcu(ib, &ib_list[dev_type], list) {
++			cnt++;
++			if (ib != NULL && ib->uniq_id == uniq_id) {
++				rcu_read_unlock();
++				pr_booster("uniq id find :: IB Idx(%d) old(%d) new(%d)", cnt, ib->uniq_id, uniq_id);
++				return false;
++			}
++		}
++		cnt = 0;
++	}
++
++	rcu_read_unlock();
++	return true;
++}
++
++struct t_ib_info* find_release_ib(int dev_type, int key_id)
++{
++	struct t_ib_info* ib = NULL;
++	rcu_read_lock();
++	if (list_empty(&ib_list[dev_type])) {
++		rcu_read_unlock();
++		pr_booster("Release IB(%d) Not Exist & List Empty", key_id);
++		return NULL;
++	}
++
++	list_for_each_entry_rcu(ib, &ib_list[dev_type], list) {
++		if (ib != NULL && ib->key_id == key_id && ib->rel_flag == FLAG_OFF) {
++			rcu_read_unlock();
++			pr_booster("Release IB(%d) Found", key_id);
++			return ib;
++		}
++	}
++
++	rcu_read_unlock();
++	pr_booster("Release IB(%d) Not Exist", key_id);
++	return NULL;
++
++}
++
++void press_state_func(struct work_struct* work)
++{
++
++	struct t_ib_res_info res;
++	struct t_ib_target* tv;
++	long qos_values[MAX_RES_COUNT] = {0, };
++	int res_type = 0;
++
++	struct t_ib_info* target_ib = container_of(work, struct t_ib_info, ib_state_work[IB_HEAD]);
++
++	pr_info(ITAG" Press State Func :::: Unique_Id(%d)", target_ib->uniq_id);
++
++	// Get_Res_List(head) and update head value.
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++		res = target_ib->ib_dt->res[allowed_resources[res_type]];
++		if (res.head_value == 0)
++			continue;
++
++		// Find already added target value instance and update value as a head.
++		tv = find_update_target(target_ib->uniq_id, res.res_id);
++
++		if (tv == NULL) {
++			pr_err(ITAG"Press State Func :::: %d's tv(%d) is null T.T",
++				target_ib->uniq_id, res.res_id);
++			continue;
++		}
++
++		tv->value = res.head_value;
++		pr_booster("Press State Func :::: Uniq(%d)'s Update Res(%d) Head Val(%d)",
++			tv->uniq_id, res.res_id, res.head_value);
++
++		qos_values[res.res_id] = get_qos_value(res.res_id);
++
++	}
++
++	ib_set_booster(qos_values);
++	pr_booster("Press State Func :::: Press Delay Time(%lu)",
++		msecs_to_jiffies(target_ib->ib_dt->head_time));
++
++	queue_delayed_work(ib_handle_highwq, &(target_ib->ib_timeout_work[IB_HEAD]),
++		msecs_to_jiffies(target_ib->ib_dt->head_time));
++}
++
++void press_timeout_func(struct work_struct* work)
++{
++
++	struct t_ib_info* target_ib = container_of(work, struct t_ib_info, ib_timeout_work[IB_HEAD].work);
++
++	if (!target_ib)
++		return;
++
++	pr_info(ITAG" Press Timeout Func :::: Unique_Id(%d) Tail_Time(%d)",
++		target_ib->uniq_id, target_ib->ib_dt->tail_time);
++
++	int res_type;
++	struct t_ib_res_info res;
++	struct t_ib_target* tv;
++	long qos_values[MAX_RES_COUNT] = {0, };
++	long rel_flags[MAX_RES_COUNT] = {0, };
++
++	mutex_lock(&sip_rel_lock);
++	if (target_ib->ib_dt->tail_time != 0) {
++		mutex_lock(&target_ib->lock);
++		queue_work(ib_handle_highwq, &(target_ib->ib_state_work[IB_TAIL]));
++		mutex_unlock(&target_ib->lock);
++	} else {
++		//NO TAIL Scenario : Delete Ib instance and free all memory space.
++		for (res_type = 0; res_type < allowed_res_count; res_type++) {
++			res = target_ib->ib_dt->res[allowed_resources[res_type]];
++
++			tv = find_update_target(target_ib->uniq_id, res.res_id);
++			if (tv == NULL) {
++				pr_err(ITAG" Press Timeout Func :::: %d's TV No Exist(%d)",
++					target_ib->uniq_id, res.res_id);
++				continue;
++			}
++
++			spin_lock(&write_qos_lock);
++			list_del_rcu(&(tv->list));
++			spin_unlock(&write_qos_lock);
++			synchronize_rcu();
++			kfree(tv);
++			tv = NULL;
++
++			rcu_read_lock();
++			if (!list_empty(&qos_list[res.res_id])) {
++				rcu_read_unlock();
++				qos_values[res.res_id] = get_qos_value(res.res_id);
++				pr_booster("Press Timeout ::: Remove Val Cuz No Tail ::: Uniq(%d) Res(%d) Qos Val(%ld)",
++					target_ib->uniq_id, res.res_id, qos_values[res.res_id]);
++			}
++			else {
++				rcu_read_unlock();
++				rel_flags[res.res_id] = 1;
++				pr_booster("Press Timeout ::: Uniq(%d) Release Booster(%d) ::: No Tail and List Empty",
++					target_ib->uniq_id, res.res_id);
++
++			}
++		}
++
++		mutex_lock(&rel_ib_lock);
++		ib_release_booster(rel_flags);
++		ib_set_booster(qos_values);
++		mutex_unlock(&rel_ib_lock);
++
++		remove_ib_instance(target_ib);
++	}
++	mutex_unlock(&sip_rel_lock);
++
++}
++
++void release_state_func(struct work_struct* work)
++{
++
++	long qos_values[MAX_RES_COUNT] = {0, };
++	int res_type = 0;
++	struct t_ib_target* tv;
++	struct t_ib_res_info res;
++
++	struct t_ib_info* target_ib = container_of(work, struct t_ib_info, ib_state_work[IB_TAIL]);
++
++	if (target_ib == NULL)
++		return;
++
++	mutex_lock(&target_ib->lock);
++
++	target_ib->isHeadFinished = 1;
++
++	pr_info(ITAG" Release State Func :::: Unique_Id(%d) Rel_Flag(%d)",
++		target_ib->uniq_id, target_ib->rel_flag);
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++		res = target_ib->ib_dt->res[allowed_resources[res_type]];
++		if (res.tail_value == 0)
++			continue;
++
++		tv = find_update_target(target_ib->uniq_id, res.res_id);
++		if (tv == NULL)
++			continue;
++
++		spin_lock(&write_qos_lock);
++		tv->value = res.tail_value;
++		spin_unlock(&write_qos_lock);
++
++		qos_values[res.res_id] = get_qos_value(res.res_id);
++		pr_booster("Release State Func :::: Uniq(%d)'s Update Tail Val (%d), Qos_Val(%ld)",
++			tv->uniq_id, tv->value, qos_values[res.res_id]);
++	}
++
++	ib_set_booster(qos_values);
++
++	// If release event already triggered, tail delay work will be triggered after relese state func.
++	if (target_ib->rel_flag == FLAG_ON) {
++		if (!delayed_work_pending(&(target_ib->ib_timeout_work[IB_TAIL]))) {
++			queue_delayed_work(ib_handle_highwq,
++				&(target_ib->ib_timeout_work[IB_TAIL]),
++				msecs_to_jiffies(target_ib->ib_dt->tail_time));
++		} else {
++			pr_err(ITAG" Release State Func :: tail timeout start");
++		}
++	} else {
++		queue_delayed_work(ib_handle_highwq,
++			&(target_ib->ib_timeout_work[IB_TAIL]),
++			msecs_to_jiffies(60000));
++	}
++
++	mutex_unlock(&target_ib->lock);
++}
++
++void release_timeout_func(struct work_struct* work)
++{
++	long qos_values[MAX_RES_COUNT] = {0, };
++	long rel_flags[MAX_RES_COUNT] = {0, };
++	struct t_ib_target* tv;
++	struct t_ib_res_info res;
++	int res_type;
++
++	struct t_ib_info* target_ib = container_of(work, struct t_ib_info, ib_timeout_work[IB_TAIL].work);
++	if(!target_ib)
++		return;
++
++	pr_info(ITAG" Release Timeout Func :::: Unique_Id(%d)", target_ib->uniq_id);
++	mutex_lock(&sip_rel_lock);
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++		res = target_ib->ib_dt->res[allowed_resources[res_type]];
++
++		tv = find_update_target(target_ib->uniq_id, res.res_id);
++		if (tv == NULL) {
++			pr_err(ITAG" Release Timeout Func :::: %d's TV No Exist(%d)",
++				target_ib->uniq_id, res.res_id);
++			continue;
++		}
++
++		pr_booster("Release Timeout Func :::: Delete Uniq(%d)'s TV Val (%d)",
++			tv->uniq_id, tv->value);
++
++		spin_lock(&write_qos_lock);
++		list_del_rcu(&(tv->list));
++		spin_unlock(&write_qos_lock);
++		synchronize_rcu();
++		kfree(tv);
++		tv = NULL;
++
++		rcu_read_lock();
++		if (!list_empty(&qos_list[res.res_id])) {
++			rcu_read_unlock();
++			qos_values[res.res_id] = get_qos_value(res.res_id);
++			pr_booster("Release Timeout Func ::: Uniq(%d) Res(%d) Qos Val(%ld)",
++				target_ib->uniq_id, res.res_id, qos_values[res.res_id]);
++		}
++		else {
++			rcu_read_unlock();
++			rel_flags[res.res_id] = 1;
++			pr_booster("Release Timeout ::: Release Booster(%d's %d) ::: List Empty",
++				target_ib->uniq_id, res.res_id);
++
++		}
++	}
++	mutex_lock(&rel_ib_lock);
++	ib_release_booster(rel_flags);
++	ib_set_booster(qos_values);
++	mutex_unlock(&rel_ib_lock);
++
++	remove_ib_instance(target_ib);
++	mutex_unlock(&sip_rel_lock);
++
++}
++
++struct t_ib_target* find_update_target(int uniq_id, int res_id)
++{
++	struct t_ib_target* tv;
++
++	rcu_read_lock();
++	list_for_each_entry_rcu(tv, &qos_list[res_id], list) {
++		if (tv->uniq_id == uniq_id) {
++			rcu_read_unlock();
++			return tv;
++		}
++	}
++	rcu_read_unlock();
++
++	return NULL;
++}
++
++long get_qos_value(int res_id)
++{
++	//Find tv instance that has max value in the qos_list that has the passed res_id.
++	struct t_ib_target* tv;
++	long ret_val = 0;
++
++	rcu_read_lock();
++
++	if (list_empty(&qos_list[res_id])) {
++		rcu_read_unlock();
++		return 0;
++	}
++
++	list_for_each_entry_rcu(tv, &qos_list[res_id], list) {
++		if (tv->value > ret_val)
++			ret_val = tv->value;
++	}
++	rcu_read_unlock();
++
++	return ret_val;
++}
++
++void remove_ib_instance(struct t_ib_info* target_ib)
++{
++	struct t_ib_info* ib = NULL;
++	int ib_exist = 0;
++
++	//Check if target instance exists in the list or not.
++	spin_lock(&write_ib_lock);
++	list_for_each_entry_rcu(ib, &ib_list[target_ib->ib_dt->type], list) {
++		if (ib != NULL && ib == target_ib) {
++			ib_exist = 1;
++			break;
++		}
++	}
++
++	if (!ib_exist) {
++		spin_unlock(&write_ib_lock);
++		pr_err(ITAG" Del Ib Fail Id : %d", target_ib->uniq_id);
++	} else {
++		list_del_rcu(&(target_ib->list));
++		spin_unlock(&write_ib_lock);
++		synchronize_rcu();
++		pr_info(ITAG" Del Ib Instance's Id : %d", target_ib->uniq_id);
++		mutex_lock(&mem_lock);
++		if (target_ib != NULL) {
++			kfree(target_ib);
++			target_ib = NULL;
++		}
++		mutex_unlock(&mem_lock);
++	}
++}
++
++unsigned int create_uniq_id(int type, int code, int slot)
++{
++	//id1 | (id2 << num_bits_id1) | (id3 << (num_bits_id2 + num_bits_id1))
++	pr_booster("Create Key Id -> type(%d), code(%d), slot(%d)", type, code, slot);
++	return (type << (TYPE_BITS + CODE_BITS)) | (code << CODE_BITS) | slot;
++}
++
++void ib_auto_test(int type, int code, int val)
++{
++	send_ev_enable = 1;
++}
++
++//+++++++++++++++++++++++++++++++++++++++++++++++  STRUCT & VARIABLE FOR SYSFS  +++++++++++++++++++++++++++++++++++++++++++++++//
++SYSFS_CLASS(enable_event, (buf, "%u\n", enable_event), 1)
++SYSFS_CLASS(debug_level, (buf, "%u\n", debug_level), 1)
++SYSFS_CLASS(sendevent, (buf, "%d\n", sendevent), 3)
++HEAD_TAIL_SYSFS_DEVICE(head)
++HEAD_TAIL_SYSFS_DEVICE(tail)
++LEVEL_SYSFS_DEVICE(level)
++
++struct attribute* dvfs_attributes[] = {
++	&dev_attr_head.attr,
++	&dev_attr_tail.attr,
++	&dev_attr_level.attr,
++	NULL,
++};
++
++struct attribute_group dvfs_attr_group = {
++	.attrs = dvfs_attributes,
++};
++
++void init_sysfs_device(struct class* sysfs_class, struct t_ib_device_tree* ib_dt) {
++	struct device* sysfs_dev;
++	int ret = 0;
++	int bus_ret = 0;
++	sysfs_dev = device_create(sysfs_class, NULL, 0, ib_dt, "%s", ib_dt->label);
++	if (IS_ERR(sysfs_dev)) {
++		ret = IS_ERR(sysfs_dev);
++		pr_err(ITAG" Failed to create %s sysfs device[%d]n", ib_dt->label, ret);
++		return;
++	}
++	ret = sysfs_create_group(&sysfs_dev->kobj, &dvfs_attr_group);
++	if (ret) {
++		pr_err(ITAG" Failed to create %s sysfs groupn", ib_dt->label);
++		return;
++	}
++}
++
++int parse_dtsi_str(struct device_node *np, const char *target_node, void *target_arr, int isIntType)
++{
++	char prop_str[100];
++	size_t prop_size = 0;
++	char *prop_pointer = NULL;
++	const char *token = NULL;
++	int iter = 0;
++	int *int_target_arr_ptr;
++	char *str_target_arr_ptr;
++	int copy_result;
++	const char *full_str = of_get_property(np, target_node, NULL);
++
++	if (full_str == NULL)
++		return -1;
++
++	if (isIntType)
++		int_target_arr_ptr = (int *)target_arr;
++	else
++		str_target_arr_ptr = (char *)target_arr;
++
++	prop_size = strlcpy(prop_str, full_str, sizeof(char)*100);
++	prop_pointer = prop_str;
++	token = strsep(&prop_pointer, ",");
++
++	while (token != NULL) {
++		pr_booster("%s %d's Type Value(%s)", target_node, iter, token);
++
++		//Release Values inserted inside array
++		if (isIntType) {
++			copy_result = sscanf(token, "%d", &int_target_arr_ptr[iter]);
++			if (!copy_result) {
++				pr_err(ITAG"DTSI string value parsing fail");
++				return -1;
++			}
++			pr_booster("Target_arr[%d] : %d", iter, int_target_arr_ptr[iter]);
++		} else {
++			copy_result = sscanf(token, "%s", &str_target_arr_ptr[iter]);
++			if (!copy_result) {
++				pr_err(ITAG"DTSI string value parsing fail");
++				return -1;
++			}
++		}
++
++		token = strsep(&prop_pointer, ",");
++		iter++;
++	}
++
++	return iter;
++}
++
++int is_ib_init_succeed(void)
++{
++	return (ib_trigger != NULL && ib_device_trees != NULL &&
++		ib_list != NULL && qos_list != NULL) ? 1 : 0;
++}
++
++void input_booster_exit(void)
++{
++
++	kfree(ib_trigger);
++	kfree(ib_device_trees);
++	kfree(ib_list);
++	kfree(qos_list);
++	kfree(cpu_cluster_policy);
++	kfree(allowed_resources);
++	kfree(release_val);
++
++	input_booster_exit_vendor();
++
++}
++
++// ********** Init Booster ********** //
++
++void input_booster_init(void)
++{
++	// ********** Load Frequency data from DTSI **********
++	struct device_node* np;
++	int i;
++
++	int ib_dt_size = sizeof(struct t_ib_device_tree);
++	int ib_res_size = sizeof(struct t_ib_res_info);
++	int list_head_size = sizeof(struct list_head);
++	int ddr_info_size = sizeof(struct t_ddr_info);
++
++	int ndevice_in_dt = 0;
++	int res_cnt;
++	int result;
++
++	total_ib_cnt = 0;
++	ib_init_succeed = 0;
++	debug_flag = 0;
++	enable_event_booster = INIT_ZERO;
++	max_resource_count = 0;
++	allowed_res_count = 0;
++	device_count = 0;
++	evdev_mt_slot = 0;
++	trigger_cnt = 0;
++	send_ev_enable = 0;
++
++	spin_lock_init(&write_ib_lock);
++	spin_lock_init(&write_qos_lock);
++	mutex_init(&trigger_ib_lock);
++	mutex_init(&sip_rel_lock);
++	mutex_init(&rel_ib_lock);
++	mutex_init(&mem_lock);
++
++//Input Booster Trigger Strcut Init
++	ib_trigger = kzalloc(sizeof(struct t_ib_trigger) * MAX_IB_COUNT, GFP_KERNEL);
++	if (ib_trigger == NULL) {
++		pr_err(ITAG" ib_trigger mem alloc fail");
++		goto out;
++	}
++
++	for (i = 0; i < MAX_IB_COUNT; i++)
++		INIT_WORK(&(ib_trigger[i].ib_trigger_work), trigger_input_booster);
++
++	np = of_find_compatible_node(NULL, NULL, "input_booster");
++	if (np == NULL) {
++		goto out;
++	}
++
++// Geting the count of devices.
++	ndevice_in_dt = of_get_child_count(np);
++	pr_info(ITAG" %s   ndevice_in_dt : %d\n", __func__, ndevice_in_dt);
++
++	ib_device_trees = kzalloc(ib_dt_size * ndevice_in_dt, GFP_KERNEL);
++	if (ib_device_trees == NULL) {
++		pr_err(ITAG" dt_infor mem alloc fail");
++		goto out;
++	}
++
++// ib list mem alloc
++	ib_list = kzalloc(list_head_size * ndevice_in_dt, GFP_KERNEL);
++	if (ib_list == NULL) {
++		pr_err(ITAG" ib list mem alloc fail");
++		goto out;
++	}
++
++// Get Needed Information from dtsi
++	result = sscanf((of_get_property(np, "max_resource_count",
++			NULL)), "%d", &max_resource_count);
++	if (!result) {
++		pr_err(ITAG"max_resource_count value parsing fail");
++		goto out;
++	}
++
++	result = sscanf((of_get_property(np, "max_cluster_count",
++			NULL)), "%d", &max_cluster_count);
++	if (!result) {
++		pr_err(ITAG"max_cluster_count value parsing fail");
++		goto out;
++	}
++
++	pr_info(ITAG" resource size : %d, cluster count : %d",
++		max_resource_count, max_cluster_count);
++
++//qos list mem alloc
++	qos_list = kzalloc(list_head_size * max_resource_count, GFP_KERNEL);
++	if (qos_list == NULL) {
++		pr_err(ITAG" ib list mem alloc fail");
++		goto out;
++	}
++	for (res_cnt = 0; res_cnt < max_resource_count; res_cnt++)
++		INIT_LIST_HEAD(&qos_list[res_cnt]);
++
++//Init Cpu Cluster Value
++	cpu_cluster_policy = kzalloc(sizeof(int) * max_cluster_count, GFP_KERNEL);
++	if (cpu_cluster_policy == NULL) {
++		pr_err(ITAG" cpu_cluster_policy mem alloc fail");
++		goto out;
++	}
++	result = parse_dtsi_str(np, "cpu_cluster_policy", cpu_cluster_policy, 1);
++	pr_info(ITAG" Init:: Total Cpu Cluster Count : %d", result);
++	if (result < 0)
++		goto out;
++
++	if (result < max_cluster_count) {
++		for (i = result; i < max_cluster_count; i++)
++			cpu_cluster_policy[i] = -1;
++	}
++
++//Allow Resource
++	allowed_resources = kzalloc(sizeof(int) * max_resource_count, GFP_KERNEL);
++	if (allowed_resources == NULL) {
++		pr_err(ITAG" allowed_resources mem alloc fail");
++		goto out;
++	}
++	result = parse_dtsi_str(np, "allowed_resources", allowed_resources, 1);
++	pr_info(ITAG" Init:: Total Allow Resource Count: %d", result);
++	allowed_res_count = result;
++	if (result < 0)
++		goto out;
++
++	for (i = 0; i < result; i++) {
++		if (allowed_resources[i] >= max_resource_count) {
++			pr_err(ITAG" allow res index exceeds over max res count",
++				allowed_resources[i]);
++			goto out;
++		}
++	}
++
++	if (result > max_resource_count) {
++		pr_err(ITAG" allow resources exceed over max resource count");
++		goto out;
++	}
++
++//Init Resource Release Values
++	release_val = kzalloc(sizeof(int) * max_resource_count, GFP_KERNEL);
++	if (release_val == NULL) {
++		pr_err(ITAG" release_val mem alloc fail");
++		goto out;
++	}
++	result = parse_dtsi_str(np, "ib_release_values", release_val, 1);
++	pr_info(ITAG" Init:: Total Release Value Count: %d", result);
++	if (result < 0)
++		goto out;
++
++	if (result > max_resource_count) {
++		pr_err(ITAG" release value parse fail :: overceed max value");
++		goto out;
++	}
++
++	struct device_node* cnp;
++
++	for_each_child_of_node(np, cnp) {
++		/************************************************/
++		// fill all needed data into res_info instance that is in dt instance.
++		struct t_ib_device_tree* ib_dt = (ib_device_trees + device_count);
++		struct device_node* child_resource_node;
++		struct device_node* resource_node = of_find_compatible_node(cnp, NULL, "resource");
++
++		ib_dt->res = kzalloc(ib_res_size * max_resource_count, GFP_KERNEL);
++		for (i = 0; i < max_resource_count; ++i){
++			ib_dt->res[i].res_id = -1;
++			ib_dt->res[i].label = 0;
++			ib_dt->res[i].head_value = 0;
++			ib_dt->res[i].tail_value = 0;
++		}
++
++		int resource_node_index = 0;
++		int res_type = 0;
++		for_each_child_of_node(resource_node, child_resource_node) {
++			// allowed_resources[resource_node_index] is same as Resource's ID.
++			ib_dt->res[allowed_resources[resource_node_index]].res_id = allowed_resources[resource_node_index];
++			ib_dt->res[allowed_resources[resource_node_index]].label = of_get_property(child_resource_node, "resource,label", NULL);
++
++			int inputbooster_size = 0;
++
++			const u32* is_exist_inputbooster_size = of_get_property(child_resource_node, "resource,value", &inputbooster_size);
++
++			if (is_exist_inputbooster_size && inputbooster_size) {
++				inputbooster_size = inputbooster_size / sizeof(u32);
++			}
++
++			if (inputbooster_size != 2) {
++				pr_err(ITAG" inputbooster size must be 2!");
++				return; // error
++			}
++
++			for (res_type = 0; res_type < inputbooster_size; ++res_type) {
++				if (res_type == IB_HEAD) {
++					of_property_read_u32_index(child_resource_node, "resource,value",
++						res_type, &ib_dt->res[allowed_resources[resource_node_index]].head_value);
++				}
++				else if (res_type == IB_TAIL) {
++					of_property_read_u32_index(child_resource_node, "resource,value",
++						res_type, &ib_dt->res[allowed_resources[resource_node_index]].tail_value);
++				}
++			}
++
++			resource_node_index++;
++		}
++
++		ib_dt->label = of_get_property(cnp, "input_booster,label", NULL);
++		pr_info(ITAG" %s   ib_dt->label : %s\n", __func__, ib_dt->label);
++
++		if (of_property_read_u32(cnp, "input_booster,type", &ib_dt->type)) {
++			pr_err(ITAG" Failed to get type property\n");
++			break;
++		}
++		if (of_property_read_u32(cnp, "input_booster,head_time", &ib_dt->head_time)) {
++			pr_err(ITAG" Fail Get Head Time\n");
++			break;
++		}
++		if (of_property_read_u32(cnp, "input_booster,tail_time", &ib_dt->tail_time)) {
++			pr_err(ITAG" Fail Get Tail Time\n");
++			break;
++		}
++
++		//Init all type of ib list.
++		INIT_LIST_HEAD(&ib_list[device_count]);
++
++		device_count++;
++	}
++
++	ib_init_succeed = is_ib_init_succeed();
++	pr_info(ITAG" Total Input Device Count(%d), IsSuccess(%d)", device_count, ib_init_succeed);
++	ib_init_succeed = input_booster_init_vendor();
++
++	if (ib_init_succeed)
++		ib_handle_highwq = alloc_workqueue("ib_unbound_high_wq", WQ_UNBOUND | WQ_HIGHPRI,
++					 MAX_IB_COUNT);
++
++out:
++	// ********** Initialize Sysfs **********
++	{
++		struct class* sysfs_class;
++		int ret;
++		int ib_type;
++		sysfs_class = class_create(THIS_MODULE, "input_booster");
++
++		if (IS_ERR(sysfs_class)) {
++			pr_err(ITAG" Failed to create class\n");
++			return;
++		}
++		if (ib_init_succeed) {
++			INIT_SYSFS_CLASS(enable_event)
++			INIT_SYSFS_CLASS(debug_level)
++			INIT_SYSFS_CLASS(sendevent)
++
++			for (ib_type = 0; ib_type < ndevice_in_dt; ib_type++) {
++				init_sysfs_device(sysfs_class, &ib_device_trees[ib_type]);
++			}
++		} 
++	}
++}
++
++#endif //CONFIG_SEC_INPUT_BOOSTER_QC || CONFIG_SEC_INPUT_BOOSTER_SLSI || CONFIG_SEC_INPUT_BOOSTER_MTK
++
++MODULE_LICENSE("GPL");
+diff --git a/drivers/input/input_boost/input_booster_lsi.c b/drivers/input/input_boost/input_booster_lsi.c
+new file mode 100644
+index 000000000..54f6455c6
+--- /dev/null
++++ b/drivers/input/input_boost/input_booster_lsi.c
+@@ -0,0 +1,251 @@
++#include <linux/input/input_booster.h>
++#include <linux/cpufreq.h>
++#include <linux/sched.h>
++#include <linux/ems.h>
++#include <linux/syscalls.h>
++#include <linux/module.h>
++#include <soc/samsung/exynos_pm_qos.h>
++#include <soc/samsung/exynos-ufcc.h>
++
++static struct emstune_mode_request emstune_req_input;
++struct freq_qos_request *cpu_cluster_qos;
++struct exynos_pm_qos_request mif_qos;
++struct exynos_pm_qos_request int_qos;
++static bool cluster_qos_init_success;
++
++static struct ucc_req ucc_req =
++{
++	.name = "input_booster",
++};
++
++static DEFINE_MUTEX(input_lock);
++bool current_hmp_boost = INIT_ZERO;
++bool current_ucc_boost = INIT_ZERO;
++
++int freq_qos_init(void);
++
++void set_ib_ucc(int ucc_value)
++{
++	mutex_lock(&input_lock);
++
++	if (ucc_value != current_ucc_boost) {
++		pr_booster("[Input Booster2] ******      set_ib_ucc : %d ( %s )\n", ucc_value, __FUNCTION__);
++		if (ucc_value) {
++			ucc_add_request(&ucc_req, ucc_value);
++		} else {
++			ucc_remove_request(&ucc_req);
++		}
++		current_ucc_boost = ucc_value;
++	}
++
++	mutex_unlock(&input_lock);
++}
++
++void set_ib_hmp(int hmp_value)
++{
++	mutex_lock(&input_lock);
++
++	if (hmp_value != current_hmp_boost) {
++		pr_booster("[Input Booster2] ******      set_ib_hmp : %d ( %s )\n", hmp_value, __FUNCTION__);
++		emstune_update_request(&emstune_req_input, hmp_value);
++		current_hmp_boost = hmp_value;
++	}
++
++	mutex_unlock(&input_lock);
++}
++
++void ib_set_booster(long* qos_values)
++{
++	int res_type = 0;
++	int cur_res_idx;
++	long value = -1;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++
++		cur_res_idx = allowed_resources[res_type];
++		value = qos_values[cur_res_idx];
++
++		if (value <= 0)
++			continue;
++
++		switch (cur_res_idx) {
++		case CLUSTER2:
++		case CLUSTER1:
++		case CLUSTER0:
++			mutex_lock(&input_lock);
++
++			if (cluster_qos_init_success) {
++				freq_qos_update_request(&cpu_cluster_qos[cur_res_idx],
++					value);
++			} else {
++				freq_qos_init();
++			}
++
++			mutex_unlock(&input_lock);
++			break;
++		case MIF:
++			exynos_pm_qos_update_request(&mif_qos, value);
++			break;
++		case INT:
++			exynos_pm_qos_update_request(&int_qos, value);
++			break;
++		case HMPBOOST:
++			set_ib_hmp(value);
++			break;
++		case UCC:
++			set_ib_ucc(value);
++			break;
++		default:
++			break;
++		}
++	}
++}
++
++void ib_release_booster(long *rel_flags)
++{
++	int res_type = 0;
++	int cur_res_idx;
++	long flag = -1;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++
++		cur_res_idx = allowed_resources[res_type];
++		flag = rel_flags[cur_res_idx];
++
++		if (flag <= 0)
++			continue;
++
++		switch (cur_res_idx) {
++		case CLUSTER2:
++		case CLUSTER1:
++		case CLUSTER0:
++			if (cpu_cluster_policy[cur_res_idx] != -1)
++				freq_qos_update_request(&cpu_cluster_qos[cur_res_idx], release_val[cur_res_idx]);
++			break;
++		case MIF:
++			exynos_pm_qos_update_request(&mif_qos, release_val[MIF]);
++			break;
++		case INT:
++			exynos_pm_qos_update_request(&int_qos, release_val[INT]);
++			break;
++		case HMPBOOST:
++			set_ib_hmp(release_val[HMPBOOST]);
++			break;
++		case UCC:
++			set_ib_ucc(release_val[UCC]);
++			break;
++		default:
++			break;
++		}
++	}
++}
++
++int freq_qos_init(void)
++{
++	int cpu_cluster;
++	int ret;
++	int fail_cluster;
++
++	struct cpufreq_policy *policy;
++	struct freq_qos_request *req;
++
++	for (cpu_cluster = 0; cpu_cluster < max_cluster_count; cpu_cluster++) {
++		if (cpu_cluster_policy[cpu_cluster] == -1)
++			continue;
++
++		policy = cpufreq_cpu_get(cpu_cluster_policy[cpu_cluster]);
++		if (!policy) {
++			pr_err("%s: Failed to get cpufreq policy for cluster(%d)\n",
++				__func__, cpu_cluster_policy[cpu_cluster]);
++			fail_cluster = cpu_cluster;
++			ret = -EAGAIN;
++			goto reset_qos;
++		}
++		ret = freq_qos_add_request(&policy->constraints,
++			&cpu_cluster_qos[cpu_cluster], FREQ_QOS_MIN, policy->min);
++
++		if (ret < 0) {
++			pr_err("%s: Failed to add qos constraint (%d)\n",
++				__func__, ret);
++			fail_cluster = cpu_cluster;
++			goto reset_qos;
++		}
++	}
++	cluster_qos_init_success = true;
++	return 0;
++
++reset_qos:
++	for (cpu_cluster = fail_cluster - 1; cpu_cluster >= 0; cpu_cluster--) {
++		if (cpu_cluster_policy[cpu_cluster] == -1)
++			freq_qos_remove_request(&cpu_cluster_qos[cpu_cluster]);
++	}
++	return ret;
++}
++
++int input_booster_init_vendor(void)
++{
++
++	int res_type = 0;
++
++	cpu_cluster_qos = kcalloc(ABS_CNT, sizeof(struct freq_qos_request) * max_cluster_count, GFP_KERNEL);
++	if (cpu_cluster_qos == NULL)
++		return 0;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++		switch (allowed_resources[res_type]) {
++		case MIF:
++			exynos_pm_qos_add_request(&mif_qos,
++				PM_QOS_BUS_THROUGHPUT, PM_QOS_BUS_THROUGHPUT_DEFAULT_VALUE);
++			break;
++		case INT:
++			exynos_pm_qos_add_request(&int_qos,
++				PM_QOS_DEVICE_THROUGHPUT, PM_QOS_DEVICE_THROUGHPUT_DEFAULT_VALUE);
++			break;
++		case HMPBOOST:
++			emstune_add_request(&emstune_req_input);
++			break;
++		case UCC:
++			ucc_add_request(&ucc_req, DEFAULT_LEVEL);
++			break;
++		default:
++			break;
++		}
++	}
++
++	return 1;
++}
++
++void input_booster_exit_vendor()
++{
++	int res_type = 0;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++		switch (allowed_resources[res_type]) {
++		case CLUSTER2:
++			if (cpu_cluster_policy[CLUSTER2] != -1)
++				freq_qos_remove_request(&cpu_cluster_qos[CLUSTER2]);
++			break;
++		case CLUSTER1:
++			if (cpu_cluster_policy[CLUSTER1] != -1)
++				freq_qos_remove_request(&cpu_cluster_qos[CLUSTER1]);
++			break;
++		case CLUSTER0:
++			if (cpu_cluster_policy[CLUSTER0] != -1)
++				freq_qos_remove_request(&cpu_cluster_qos[CLUSTER0]);
++			break;
++		case MIF:
++			exynos_pm_qos_remove_request(&mif_qos);
++			break;
++		case INT:
++			exynos_pm_qos_remove_request(&int_qos);
++			break;
++		case HMPBOOST:
++			break;
++		case UCC:
++			break;
++		default:
++			break;
++		}
++	}
++	kfree(cpu_cluster_qos);
++}
+diff --git a/drivers/input/input_boost/input_booster_mtk.c b/drivers/input/input_boost/input_booster_mtk.c
+new file mode 100644
+index 000000000..758ee2ac8
+--- /dev/null
++++ b/drivers/input/input_boost/input_booster_mtk.c
+@@ -0,0 +1,127 @@
++#include <linux/input/input_booster.h>
++#include <sched_ctl.h>
++#define PM_QOS_DDR_OPP_DEFAULT 16
++#define DDR_OPP_NUM 3
++
++#ifndef CONFIG_CPU_FREQ_LIMIT
++#define DVFS_TOUCH_ID	0
++int set_freq_limit(unsigned long id, unsigned int freq)
++{
++	pr_err("%s is not yet implemented\n", __func__);
++	return 0;
++}
++#else
++	/* TEMP: for KPI */
++#define DVFS_TOUCH_ID 1
++#endif
++
++int dvfsrc_opp_table[DDR_OPP_NUM] = {
++	3600,
++	2400,
++	1534
++};
++
++int trans_freq_to_level(long request_ddr_freq)
++{
++	int i = 0;
++
++	if (request_ddr_freq <= 0) {
++		return PM_QOS_DDR_OPP_DEFAULT;
++	}
++
++	for (i = 1; i < DDR_OPP_NUM; i++) {
++		if (request_ddr_freq > dvfsrc_opp_table[i]) {
++			return (i-1);
++		}
++	}
++
++	return DDR_OPP_NUM - 1;
++}
++
++static struct pm_qos_request ddr_pm_qos_request;
++
++void ib_set_booster(long *qos_values)
++{
++	long value = -1;
++	int res_type = 0;
++	int ddr_level = 0;
++	int cur_res_idx;
++	int rc = 0;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++
++		cur_res_idx = allowed_resources[res_type];
++		value = qos_values[cur_res_idx];
++
++		if (value <= 0 && cur_res_idx != SCHEDBOOST)
++			continue;
++
++		switch (cur_res_idx) {
++		case CPUFREQ:
++			set_freq_limit(DVFS_TOUCH_ID, value);
++			pr_booster("%s :: cpufreq value : %ld", __func__, value);
++			break;
++		case DDRFREQ:
++			ddr_level = trans_freq_to_level(value);
++			pm_qos_update_request(&ddr_pm_qos_request, ddr_level);
++			pr_booster("%s :: bus value : %ld", __func__, dvfsrc_opp_table[ddr_level]);
++			break;
++		case SCHEDBOOST:
++			set_sched_boost(value);
++			pr_booster("%s :: schedboost value : %ld", __func__, value);
++			break;
++		default:
++			pr_booster("%s :: cur_res_idx : %d is not used", __func__, cur_res_idx);
++			break;
++		}
++	}
++}
++
++void ib_release_booster(long *rel_flags)
++{
++	int flag;
++	int rc = 0;
++	int value;
++
++	int res_type = 0;
++	int cur_res_idx;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++
++		cur_res_idx = allowed_resources[res_type];
++		flag = rel_flags[cur_res_idx];
++		if (flag <= 0)
++			continue;
++
++		value = release_val[cur_res_idx];
++
++		switch (cur_res_idx) {
++		case CPUFREQ:
++			set_freq_limit(DVFS_TOUCH_ID, value);
++			pr_booster("%s :: cpufreq value : %ld", __func__, value);
++			break;
++		case DDRFREQ:
++			pm_qos_update_request(&ddr_pm_qos_request, value);
++			pr_booster("%s :: bus value : %ld", __func__, value);
++			break;
++		case SCHEDBOOST:
++			set_sched_boost(value);
++			pr_booster("%s :: schedboost value : %ld", __func__, value);
++			break;
++		default:
++			pr_booster("%s :: cur_res_idx : %d is not used", __func__, cur_res_idx);
++			break;
++		}
++	}
++}
++
++int input_booster_init_vendor(void)
++{
++	pm_qos_add_request(&ddr_pm_qos_request, PM_QOS_DDR_OPP, PM_QOS_DDR_OPP_DEFAULT);
++	return 1;
++}
++
++void input_booster_exit_vendor(void)
++{
++	pm_qos_remove_request(&ddr_pm_qos_request);
++}
+diff --git a/drivers/input/input_boost/input_booster_qc.c b/drivers/input/input_boost/input_booster_qc.c
+new file mode 100644
+index 000000000..d4a2b9b5a
+--- /dev/null
++++ b/drivers/input/input_boost/input_booster_qc.c
+@@ -0,0 +1,253 @@
++#include <linux/input/input_booster.h>
++#include <linux/device.h>
++#include <linux/syscalls.h>
++
++int current_hmp_boost = 0;
++struct pm_qos_request lpm_bias_pm_qos_request;
++
++static struct device *dev;
++struct icc_path *path_touch_bw;
++int register_ddr;
++
++#define MHZ_TO_BPS(mhz, w) ((uint64_t)mhz * 1000 * 1000 * w)
++#define MHZ_TO_KBPS(mhz, w) ((uint64_t)mhz * 1000 * w)
++
++//Refer to "include/dt-bindings/interconnect/qcom,lahaina.h"
++#define MASTER_APPSS_PROC				2
++#define SLAVE_EBI1				512
++
++void set_hmp(int level);
++
++#ifndef CONFIG_CPU_FREQ_LIMIT
++#define DVFS_TOUCH_ID	0
++int set_freq_limit(unsigned long id, unsigned int freq)
++{
++	pr_err("%s is not yet implemented\n", __func__);
++	return 0;
++}
++#else
++	/* TEMP: for KPI */
++#define DVFS_TOUCH_ID 1
++#endif
++
++#if defined(CONFIG_ARCH_LAHAINA)
++#define NUM_BUS_TABLE 14
++#define BUS_W 4	/* SM8350 DDR Voting('w' for DDR is 4) */
++
++int ab_ib_bus_vectors[NUM_BUS_TABLE][2] = {
++	//{ab, ib}
++	{0, 0},		/* 0 */
++	{0, 200},	/* 1 */
++	{0, 451},	/* 2 */
++	{0, 547},	/* 3 */
++	{0, 681},	/* 4 */
++	{0, 768},	/* 5 */
++
++	{0, 1017},	/* 6 */
++	{0, 1353},	/* 7 */
++	{0, 1555},	/* 8 */
++	{0, 1708},	/* 9 */
++	{0, 2092},	/* 10 */
++	{0, 2133},	/* 11 */
++	{0, 2736},	/* 12 */
++	{0, 3196}	/* 13 */
++};
++#else
++#define NUM_BUS_TABLE 1
++#define BUS_W 0
++
++int ab_ib_bus_vectors[NUM_BUS_TABLE][2] = {
++	{0, 0},		/* 0 */
++};
++#endif	//set null for other chipset
++
++
++struct msm_touch_bus_vector_bps {
++	uint32_t ab;
++	uint32_t ib;
++};
++struct msm_touch_bus_vector_bps touch_bus_vectors_bps[NUM_BUS_TABLE];
++void fill_bus_vector(void)
++{
++	int i = 0;
++
++	for (i = 0; i < NUM_BUS_TABLE; i++) {
++		touch_bus_vectors_bps[i].ab = ab_ib_bus_vectors[i][0];
++		touch_bus_vectors_bps[i].ib = MHZ_TO_KBPS(ab_ib_bus_vectors[i][1], BUS_W);
++	}
++}
++
++int trans_freq_to_idx(long request_ddr_freq)
++{
++	int i = 0;
++
++	if (request_ddr_freq <= 0) {
++		return 0;
++	}
++
++	// in case of null table, return 0
++	if (NUM_BUS_TABLE == 1) {
++		return 0;
++	}
++
++	for (i = 0; i < NUM_BUS_TABLE-1; i++) {
++		if (request_ddr_freq > ab_ib_bus_vectors[i][1] &&
++			request_ddr_freq <= ab_ib_bus_vectors[i+1][1]) {
++			return (i+1);
++		}
++	}
++
++	return i+1;
++}
++
++void ib_set_booster(long* qos_values)
++{
++	long value = -1;
++	int ddr_idx = 0;
++	int res_type =0;
++	int cur_res_idx;
++	int rc = 0;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++
++		cur_res_idx = allowed_resources[res_type];
++		value = qos_values[cur_res_idx];
++
++		if (value <= 0)
++			continue;
++
++		switch (cur_res_idx) {
++		case CPUFREQ:
++			set_freq_limit(DVFS_TOUCH_ID, value);
++			pr_booster("%s :: cpufreq value : %ld", __func__, value);
++			break;
++		case DDRFREQ:
++			ddr_idx = trans_freq_to_idx(value);
++			pr_booster("%s :: bus value : %ld, %u", __func__, value, touch_bus_vectors_bps[ddr_idx].ib);
++			if (register_ddr)
++				rc = icc_set_bw(path_touch_bw,
++						touch_bus_vectors_bps[ddr_idx].ab, touch_bus_vectors_bps[ddr_idx].ib);
++			break;
++		case HMPBOOST:
++			set_hmp(value);
++			pr_booster("%s :: hmpboost value : %ld", __func__, value);
++			break;
++		case LPMBIAS:
++			pm_qos_update_request(&lpm_bias_pm_qos_request, value);
++			pr_booster("%s :: LPM Bias value : %ld", __func__, value);
++			break;
++		default:
++			break;
++		}
++	}
++}
++
++void ib_release_booster(long *rel_flags)
++{
++	//cpufreq : -1, ddrfreq : 0, HMP : 0, lpm_bias = 0
++	int ddr_idx;
++	int flag;
++	int rc = 0;
++	int value;
++
++	int res_type = 0;
++	int cur_res_idx;
++
++	for (res_type = 0; res_type < allowed_res_count; res_type++) {
++
++		cur_res_idx = allowed_resources[res_type];
++		flag = rel_flags[cur_res_idx];
++		if (flag <= 0)
++			continue;
++
++		value = release_val[cur_res_idx];
++
++		switch (cur_res_idx) {
++		case CPUFREQ:
++			set_freq_limit(DVFS_TOUCH_ID, value);
++			break;
++		case DDRFREQ:
++			ddr_idx = trans_freq_to_idx(value);
++			if (register_ddr)
++				rc = icc_set_bw(path_touch_bw,
++						touch_bus_vectors_bps[ddr_idx].ab, touch_bus_vectors_bps[ddr_idx].ib);
++			break;
++		case HMPBOOST:
++			set_hmp(value);
++			break;
++		case LPMBIAS:
++			pm_qos_update_request(&lpm_bias_pm_qos_request, value);
++			break;
++		default:
++			break;
++		}
++	}
++}
++
++#ifdef USE_HMP_BOOST
++void set_hmp(int level)
++{
++	if (level != current_hmp_boost) {
++		if (level == 0) {
++			level = -current_hmp_boost;
++			current_hmp_boost = 0;
++		} else {
++			current_hmp_boost = level;
++		}
++		pr_booster("[Input Booster2] ******     hmp_boost : %d ( %s )\n", level, __func__);
++		if (sched_set_boost(level) < 0)
++			pr_err("[Input Booster2] ******            !!! fail to HMP !!!\n");
++	}
++}
++#else
++void set_hmp(int level)
++{
++	pr_booster("It does not use hmp\n", level, __func__);
++}
++#endif
++
++static void icc_release(struct device *dev)
++{
++	pr_booster("Release icc path of device\n");
++}
++
++int input_booster_init_vendor(void)
++{
++
++	int bus_ret = 0;
++
++//Bus boost factors initailized
++	dev = kzalloc(sizeof(struct device), GFP_KERNEL);
++	dev_set_name(dev, "input_booster");
++	dev->release = icc_release;
++	device_register(dev);
++
++	if (!register_ddr) {
++		path_touch_bw = icc_get(dev, MASTER_APPSS_PROC, SLAVE_EBI1);
++		if (IS_ERR(path_touch_bw)) {
++			bus_ret = PTR_ERR(path_touch_bw);
++			if (bus_ret != -EPROBE_DEFER)
++				pr_err("Failed to get path from input bus booster. ret=%d\n", bus_ret);
++		} else {
++			pr_info(ITAG" Making icc path for bus success");
++			register_ddr = 1;
++		}
++	}
++
++	fill_bus_vector();
++	pm_qos_add_request(&lpm_bias_pm_qos_request,
++		PM_QOS_BIAS_HYST, PM_QOS_BIAS_HYST_DEFAULT_VALUE);
++	return 1;
++}
++
++void input_booster_exit_vendor(void)
++{
++	if (register_ddr)
++		icc_put(path_touch_bw);
++
++	device_unregister(dev);
++	kfree(dev);
++	pm_qos_remove_request(&lpm_bias_pm_qos_request);
++}
++
++MODULE_LICENSE("GPL");
+diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
+index 7dae445e4..d04d6a1bf 100644
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -805,3 +805,11 @@ comment "LED Triggers"
+ source "drivers/leds/trigger/Kconfig"
+ 
+ endif # NEW_LEDS
++# --- A31 port ---
++config LEDS_S2MU106_FLASH
++    bool "FLASH LED support for the S2MU106"
++    depends on (MFD_S2MU106) && I2C
++    help
++      If you say yes here you will get support for
++      for the LEDS_S2MU106_FLASH led chip.
++
+diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
+index ecf2fb09e..a47a3bfb5 100644
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -95,3 +95,5 @@ obj-$(CONFIG_LEDS_USER)			+= uleds.o
+ 
+ # LED Triggers
+ obj-$(CONFIG_LEDS_TRIGGERS)		+= trigger/
++# --- A31 port ---
++obj-$(CONFIG_LEDS_S2MU106_FLASH)		+= leds-s2mu106.o
+diff --git a/drivers/leds/leds-s2mu106.c b/drivers/leds/leds-s2mu106.c
+new file mode 100644
+index 000000000..8810bbf82
+--- /dev/null
++++ b/drivers/leds/leds-s2mu106.c
+@@ -0,0 +1,1213 @@
++/*
++ * leds-s2mu106.c - LED class driver for S2MU106 FLASH LEDs.
++ *
++ * Copyright (C) 2018 Samsung Electronics
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/err.h>
++#include <linux/slab.h>
++#include <linux/workqueue.h>
++#include <linux/gpio.h>
++#include <linux/of_gpio.h>
++#include <linux/mfd/samsung/s2mu106.h>
++#include <linux/leds-s2mu106.h>
++#include <linux/platform_device.h>
++#include <linux/sec_batt.h>
++#include <linux/power_supply.h>
++
++#define CONTROL_I2C 0
++#define CONTROL_GPIO 1
++
++struct s2mu106_fled_data *g_fled_data;
++
++extern struct class *camera_class;
++struct device *flash_dev;
++
++static bool fd_use = false;
++
++static char *s2mu106_fled_mode_string[] = {
++	"OFF",
++	"TORCH",
++	"FLASH",
++};
++
++static char *s2mu106_fled_operating_mode_string[] = {
++	"AUTO",
++	"BOOST",
++	"TA",
++	"SYS",
++};
++
++/*Channel values range fron 1 to 3 so 0 value is never obtained check function s2mu106_fled_set_torch_curr*/
++static int s2mu106_fled_torch_curr_max[] = {
++	-1, 320, 320, 320
++};
++
++/*Channel values range fron 1 to 3 so 0 value is never obtained check function s2mu106_fled_set_flash_curr*/
++static int s2mu106_fled_flash_curr_max[] = {
++	-1, 1600, 1600, 500
++};
++
++static void s2mu106_fled_test_read(struct s2mu106_fled_data *fled)
++{
++	u8 data;
++	char str[1016] = {0,};
++	int i;
++	struct i2c_client *i2c = fled->i2c;
++
++	for (i = 0x0B; i <= 0x0C; i++) {
++		s2mu106_read_reg(i2c, i, &data);
++		sprintf(str+strlen(str), "0x%02x:0x%02x, ", i, data);
++	}
++	for (i = 0x14; i <= 0x15; i++) {
++		s2mu106_read_reg(i2c, i, &data);
++		sprintf(str+strlen(str), "0x%02x:0x%02x, ", i, data);
++	}
++
++	for (i = 0x53; i <= 0x5A; i++) {
++		s2mu106_read_reg(i2c, i, &data);
++		sprintf(str+strlen(str), "0x%02x:0x%02x, ", i, data);
++	}
++
++	s2mu106_read_reg(i2c, 0x5B, &data);
++	pr_err("%s: %s0x5B:0x%02x\n", __func__, str, data);
++
++	memset(str,0,strlen(str));
++
++	for (i = 0x5C; i <= 0x62; i++) {
++		s2mu106_read_reg(i2c, i, &data);
++		sprintf(str+strlen(str), "0x%02x:0x%02x, ", i, data);
++	}
++
++	s2mu106_read_reg(i2c, 0x63, &data);
++	sprintf(str+strlen(str), "0x63:0x%02x, ", data);
++
++	s2mu106_read_reg(i2c, 0x66, &data);
++	sprintf(str+strlen(str), "0x66:0x%02x, ", data);
++
++	s2mu106_read_reg(i2c, 0x67, &data);
++	pr_err("%s: %s0x67:0x%02x\n", __func__, str, data);
++
++}
++
++static int s2mu106_fled_get_flash_curr(struct s2mu106_fled_data *fled, int chan)
++{
++	int curr = -1;
++	u8 data;
++	u8 dest;
++
++	if ((chan < 1) || (chan > S2MU106_CH_MAX)) {
++		pr_info("%s: Wrong channel!!\n", __func__);
++		return -1;
++	}
++
++	switch(chan) {
++		case 1:
++			dest = S2MU106_FLED_CH1_CTRL0;
++			break;
++		case 2:
++			dest = S2MU106_FLED_CH2_CTRL0;
++			break;
++		case 3:
++			dest = S2MU106_FLED_CH3_CTRL0;
++			break;
++		default:
++			return curr;
++			break;
++	}
++
++	s2mu106_read_reg(fled->i2c, dest, &data);
++
++	data = data & S2MU106_CHX_FLASH_IOUT;
++	curr = (data * 50) + 50;
++
++	pr_info("%s: CH%02d flash curr. = %dmA\n", __func__,
++			chan, curr);
++
++	return curr;
++}
++
++static int s2mu106_fled_set_flash_curr(struct s2mu106_fled_data *fled,
++	int chan, int curr)
++{
++	int ret = -1;
++	u8 data;
++	u8 dest;
++	int curr_set;
++
++	if ((chan < 1) || (chan > S2MU106_CH_MAX)) {
++		pr_info("%s: Wrong channel!!\n", __func__);
++		return -1;
++	}
++
++	switch(chan) {
++		case 1:
++			dest = S2MU106_FLED_CH1_CTRL0;
++			break;
++		case 2:
++			dest = S2MU106_FLED_CH2_CTRL0;
++			break;
++		case 3:
++			dest = S2MU106_FLED_CH3_CTRL0;
++			break;
++		default:
++			return ret;
++			break;
++	}
++
++	if (curr < 50)
++		curr = 50;
++	else if (curr > s2mu106_fled_flash_curr_max[chan])
++		curr = s2mu106_fled_flash_curr_max[chan];
++
++	data = (curr - 50)/50;
++
++	s2mu106_update_reg(fled->i2c, dest, data, S2MU106_CHX_FLASH_IOUT);
++
++	curr_set = s2mu106_fled_get_flash_curr(fled, chan);
++
++	pr_info("%s: curr: %d, curr_set: %d\n", __func__,
++		curr, curr_set);
++
++	return ret;
++}
++
++static int s2mu106_fled_get_torch_curr(struct s2mu106_fled_data *fled,
++	int chan)
++{
++	int curr = -1;
++	u8 data;
++	u8 dest;
++
++	if ((chan < 1) || (chan > S2MU106_CH_MAX)) {
++		pr_info("%s: Wrong channel!!\n", __func__);
++		return -1;
++	}
++
++	switch(chan) {
++		case 1:
++			dest = S2MU106_FLED_CH1_CTRL1;
++			break;
++		case 2:
++			dest = S2MU106_FLED_CH2_CTRL1;
++			break;
++		case 3:
++			dest = S2MU106_FLED_CH3_CTRL1;
++			break;
++		default:
++			return curr;
++			break;
++	}
++
++	s2mu106_read_reg(fled->i2c, dest, &data);
++
++	data = data & S2MU106_CHX_TORCH_IOUT;
++	curr = data * 10 + 10;
++
++	pr_info("%s: CH%02d torch curr. = %dmA\n", __func__,
++		chan, curr);
++
++	return curr;
++}
++
++static int s2mu106_fled_set_torch_curr(struct s2mu106_fled_data *fled,
++	int chan, int curr)
++{
++	int ret = -1;
++	u8 data;
++	u8 dest;
++	int curr_set;
++
++	if ((chan < 1) || (chan > S2MU106_CH_MAX)) {
++		pr_info("%s: Wrong channel!!\n", __func__);
++		return -1;
++	}
++
++	switch(chan) {
++		case 1:
++			dest = S2MU106_FLED_CH1_CTRL1;
++			break;
++		case 2:
++			dest = S2MU106_FLED_CH2_CTRL1;
++			break;
++		case 3:
++			dest = S2MU106_FLED_CH3_CTRL1;
++			break;
++		default:
++			return ret;
++			break;
++	}
++
++	if (curr < 10)
++		curr = 10;
++	else if (curr > s2mu106_fled_torch_curr_max[chan])
++		curr = s2mu106_fled_torch_curr_max[chan];
++
++	data = (curr - 10)/10;
++
++	s2mu106_update_reg(fled->i2c, dest, data, S2MU106_CHX_TORCH_IOUT);
++
++	curr_set = s2mu106_fled_get_torch_curr(fled, chan);
++
++	pr_info("%s: curr: %d, curr_set: %d\n", __func__,
++		curr, curr_set);
++
++	ret = 0;
++
++	return ret;
++
++}
++
++static void s2mu106_fled_operating_mode(struct s2mu106_fled_data *fled, int mode)
++{
++	u8 value;
++
++	if (fled->set_on_factory) {
++		pr_info("%s Factory Status, Return\n", __func__);
++		return;
++	}
++
++	if (mode < 0 || mode > 3) {
++		pr_info ("%s, wrong mode\n", __func__);
++		mode = AUTO_MODE;
++	}
++
++	pr_info ("%s = %s\n", __func__, s2mu106_fled_operating_mode_string[mode]);
++
++	value = mode << 6;
++	s2mu106_update_reg(fled->i2c, S2MU106_FLED_CTRL0, value, 0xC0);
++}
++
++static int s2mu106_fled_get_mode(struct s2mu106_fled_data *fled, int chan)
++{
++	u8 status;
++	int ret = -1;
++
++	s2mu106_read_reg(fled->i2c, S2MU106_FLED_STATUS1, &status);
++
++	pr_info("%s: S2MU106_FLED_STATUS1: 0x%02x\n", __func__, status);
++
++	if ((chan < 1) || (chan > S2MU106_CH_MAX)) {
++		pr_info("%s: Wrong channel!!\n", __func__);
++		return -1;
++	}
++
++	switch(chan) {
++		case 1:
++			if (status & S2MU106_CH1_FLASH_ON)
++				ret = S2MU106_FLED_MODE_FLASH;
++			else if (status & S2MU106_CH1_TORCH_ON)
++				ret = S2MU106_FLED_MODE_TORCH;
++			else
++				ret = S2MU106_FLED_MODE_OFF;
++			break;
++		case 2:
++			if (status & S2MU106_CH2_FLASH_ON)
++				ret = S2MU106_FLED_MODE_FLASH;
++			else if (status & S2MU106_CH2_TORCH_ON)
++				ret = S2MU106_FLED_MODE_TORCH;
++			else
++				ret = S2MU106_FLED_MODE_OFF;
++			break;
++		case 3:
++			if (status & S2MU106_CH3_FLASH_ON)
++				ret = S2MU106_FLED_MODE_FLASH;
++			else if (status & S2MU106_CH3_TORCH_ON)
++				ret = S2MU106_FLED_MODE_TORCH;
++			else
++				ret = S2MU106_FLED_MODE_OFF;
++			break;
++		default:
++			break;
++	}
++	return ret;
++}
++
++static int s2mu106_fled_set_mode(struct s2mu106_fled_data *fled,
++		int chan, int mode)
++{
++	u8 dest = 0, bit = 0, mask = 0, status = 0;
++
++	if ((chan <= 0) || (chan > S2MU106_CH_MAX) ||
++		(mode < 0) || (mode > S2MU106_FLED_MODE_MAX)) {
++			pr_err("%s: Wrong channel or mode.\n", __func__);
++			return -EFAULT;
++	}
++
++	pr_err("%s: channel: %d, mode: %d\n", __func__, chan, mode);
++
++	/* 0b000: OFF, 0b101: i2c bit control(on) */
++	switch(mode) {
++		case S2MU106_FLED_MODE_OFF:
++			mask = S2MU106_CHX_FLASH_FLED_EN |
++				S2MU106_CHX_TORCH_FLED_EN;
++			bit = 0;
++			break;
++		case S2MU106_FLED_MODE_FLASH:
++			mask = S2MU106_CHX_FLASH_FLED_EN;
++			if (fled->control_mode == CONTROL_I2C)
++				bit = S2MU106_FLED_EN << 3;
++			else
++				bit = S2MU106_FLED_GPIO_EN1 << 3;
++			break;
++		case S2MU106_FLED_MODE_TORCH:
++			s2mu106_fled_operating_mode(fled, SYS_MODE);
++			mask = S2MU106_CHX_TORCH_FLED_EN;
++			if (fled->control_mode == CONTROL_I2C)
++				bit = S2MU106_FLED_EN;
++			else
++				bit = S2MU106_FLED_GPIO_EN2;
++			break;
++		default:
++			return -EFAULT;
++			break;
++	}
++
++	switch(chan) {
++		case 1:
++			dest = S2MU106_FLED_CTRL1;
++			break;
++		case 2:
++			dest = S2MU106_FLED_CTRL2;
++			break;
++		case 3:
++			dest = S2MU106_FLED_CTRL3;
++			break;
++		default:
++			return -EFAULT;
++			break;
++	}
++
++	/* Need to set EN_FLED_PRE bit before mode change */
++	if (mode != S2MU106_FLED_MODE_OFF)
++		s2mu106_update_reg(fled->i2c, S2MU106_FLED_CTRL0,
++			S2MU106_EN_FLED_PRE, S2MU106_EN_FLED_PRE);
++	else {
++		/* If no LED is on, clear EN_FLED_PRE */
++		s2mu106_read_reg(fled->i2c, S2MU106_FLED_STATUS1, &status);
++		if (!(status & S2MU106_FLED_ON_CHECK))
++			s2mu106_update_reg(fled->i2c, S2MU106_FLED_CTRL0,
++					0, S2MU106_EN_FLED_PRE);
++	}
++
++	s2mu106_update_reg(fled->i2c, dest, bit, mask);
++
++	if (mode == S2MU106_FLED_MODE_OFF)
++		s2mu106_fled_operating_mode(fled, AUTO_MODE);
++		
++	return 0;
++}
++
++int s2mu106_led_mode_ctrl(int state)
++{
++	struct s2mu106_fled_data *fled = g_fled_data;
++	union power_supply_propval value;
++	int gpio_torch = fled->torch_gpio;
++	int gpio_flash = fled->flash_gpio;
++
++	pr_info("%s : state = %d\n", __func__, state);
++
++	gpio_request(gpio_torch, "s2mu106_gpio_torch");
++	gpio_request(gpio_flash, "s2mu106_gpio_flash");
++
++	switch(state) {
++		case S2MU106_FLED_MODE_OFF:
++			gpio_direction_output(gpio_torch, 0);
++			gpio_direction_output(gpio_flash, 0);
++			if (fled->is_en_flash) {
++				if (!fled->psy_chg)
++					fled->psy_chg = power_supply_get_by_name("s2mu106-charger");
++				fled->is_en_flash = value.intval = false;
++				power_supply_set_property(fled->psy_chg,
++					POWER_SUPPLY_PROP_ENERGY_AVG, &value);
++			}
++			s2mu106_fled_operating_mode(fled, SYS_MODE);
++			break;
++		case S2MU106_FLED_MODE_TORCH:
++			/* chgange SYS MODE when turn on torch */
++			s2mu106_fled_operating_mode(fled, SYS_MODE);
++			gpio_direction_output(gpio_torch, 1);
++			break;
++		case S2MU106_FLED_MODE_FLASH:
++			if (!fled->psy_chg)
++				fled->psy_chg = power_supply_get_by_name("s2mu106-charger");
++
++			fled->is_en_flash = value.intval = true;
++			power_supply_set_property(fled->psy_chg,
++			POWER_SUPPLY_PROP_ENERGY_AVG, &value);
++
++			s2mu106_fled_operating_mode(fled, AUTO_MODE);
++			gpio_direction_output(gpio_flash, 1);
++			break;
++		default:
++			break;
++	}
++
++	gpio_free(gpio_torch);
++	gpio_free(gpio_flash);
++
++	return 0;
++}
++
++int s2mu106_mode_change_cam_to_leds(enum cam_flash_mode cam_mode)
++{
++	int mode = -1;
++
++	switch(cam_mode) {
++		case CAM_FLASH_MODE_OFF:
++			mode = S2MU106_FLED_MODE_OFF;
++			break;
++		case CAM_FLASH_MODE_SINGLE:
++			mode = S2MU106_FLED_MODE_FLASH;
++			break;
++		case CAM_FLASH_MODE_TORCH:
++			mode = S2MU106_FLED_MODE_TORCH;
++			break;
++		default:
++			mode = S2MU106_FLED_MODE_OFF;
++			break;
++	}
++
++	return mode;
++}
++
++int s2mu106_fled_set_mode_ctrl(int chan, enum cam_flash_mode cam_mode)
++{
++	struct s2mu106_fled_data *fled = g_fled_data;
++	int mode = -1;
++
++	mode = s2mu106_mode_change_cam_to_leds(cam_mode);
++
++	if ((chan <= 0) || (chan > S2MU106_CH_MAX) ||
++		(mode < 0) || (mode >= S2MU106_FLED_MODE_MAX)) {
++			pr_err("%s: channel: %d, mode: %d\n", __func__, chan, mode);
++			pr_err("%s: Wrong channel or mode.\n", __func__);
++			return -1;
++	}
++
++	s2mu106_fled_set_mode(fled, chan, mode);
++	s2mu106_fled_test_read(fled);
++
++	return 0;
++}
++
++int s2mu106_fled_set_curr(int chan, enum cam_flash_mode cam_mode, int curr)
++{
++	struct s2mu106_fled_data *fled = g_fled_data;
++	int mode = -1;
++
++	mode = s2mu106_mode_change_cam_to_leds(cam_mode);
++
++	/* Check channel */
++	if ((chan <= 0) || (chan > S2MU106_CH_MAX)) {
++		pr_err("%s: Wrong channel.\n", __func__);
++		return -EFAULT;
++	}
++
++	switch (mode){
++		case S2MU106_FLED_MODE_TORCH:
++			/* Set curr. */
++			s2mu106_fled_set_torch_curr(fled, chan, curr);
++			break;
++		case S2MU106_FLED_MODE_FLASH:
++			/* Set curr. */
++			s2mu106_fled_set_flash_curr(fled, chan, curr);
++			break;
++		default:
++			return -1;
++	}
++	/* Test read */
++	s2mu106_fled_test_read(fled);
++
++	return 0;
++}
++
++int s2mu106_fled_get_curr(int chan, enum cam_flash_mode cam_mode)
++{
++	struct s2mu106_fled_data *fled = g_fled_data;
++	int mode = -1;
++	int curr = 0;
++
++	mode = s2mu106_mode_change_cam_to_leds(cam_mode);
++
++	/* Check channel */
++	if ((chan <= 0) || (chan > S2MU106_CH_MAX)) {
++		pr_err("%s: Wrong channel.\n", __func__);
++		return -EFAULT;
++	}
++
++	switch (mode){
++		case S2MU106_FLED_MODE_TORCH:
++			curr = s2mu106_fled_get_torch_curr(fled, chan);
++			break;
++		case S2MU106_FLED_MODE_FLASH:
++			curr = s2mu106_fled_get_flash_curr(fled, chan);
++			break;
++		default:
++			return -1;
++	}
++	/* Test read */
++	s2mu106_fled_test_read(fled);
++
++	return curr;
++}
++
++static ssize_t fled_flash_curr_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	struct led_classdev *led_cdev = dev_get_drvdata(dev);
++	struct s2mu106_fled_data *fled =
++		container_of(led_cdev, struct s2mu106_fled_data, cdev);
++	int cnt = 0;
++	int curr = 0;
++	int i;
++	char str[1016] = {0,};
++
++	/* Read curr. */
++	for (i = 1; i <= S2MU106_CH_MAX; i++) {
++		curr = s2mu106_fled_get_flash_curr(fled, i);
++		pr_info("%s: channel: %d, curr: %dmA\n", __func__, i, curr);
++		if (curr >= 0)
++			cnt += sprintf(str+strlen(str), "CH%02d: %dmA, ", i, curr);
++	}
++
++	cnt += sprintf(str+strlen(str), "\n");
++
++	strcpy(buf, str);
++
++	return cnt;
++}
++
++static ssize_t fled_flash_curr_store(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t size)
++{
++	struct led_classdev *led_cdev = dev_get_drvdata(dev);
++	struct s2mu106_fled_data *fled =
++		container_of(led_cdev, struct s2mu106_fled_data, cdev);
++	int chan = -1;
++	int curr = -1;
++
++	sscanf(buf, "%d %d", &chan, &curr);
++
++	/* Check channel */
++	if ((chan <= 0) || (chan > S2MU106_CH_MAX)) {
++		pr_err("%s: Wrong channel.\n", __func__);
++		return -EFAULT;
++	}
++
++	/* Set curr. */
++	s2mu106_fled_set_flash_curr(fled, chan, curr);
++
++	/* Test read */
++	s2mu106_fled_test_read(fled);
++
++	return size;
++}
++
++
++static ssize_t fled_torch_curr_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	struct led_classdev *led_cdev = dev_get_drvdata(dev);
++	struct s2mu106_fled_data *fled =
++		container_of(led_cdev, struct s2mu106_fled_data, cdev);
++	int cnt = 0;
++	int curr = 0;
++	int i;
++	char str[1016] = {0,};
++
++	/* Read curr. */
++	for (i = 1; i <= S2MU106_CH_MAX; i++) {
++		curr = s2mu106_fled_get_torch_curr(fled, i);
++		pr_info("%s: channel: %d, curr: %dmA\n", __func__, i, curr);
++		if (curr >= 0)
++			cnt += sprintf(str+strlen(str), "CH%02d: %dmA, ", i, curr);
++	}
++
++	cnt += sprintf(str+strlen(str), "\n");
++
++	strcpy(buf, str);
++
++	return cnt;
++}
++
++static ssize_t fled_torch_curr_store(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t size)
++{
++	struct led_classdev *led_cdev = dev_get_drvdata(dev);
++	struct s2mu106_fled_data *fled =
++		container_of(led_cdev, struct s2mu106_fled_data, cdev);
++	int chan = -1;
++	int curr = -1;
++
++	sscanf(buf, "%d %d", &chan, &curr);
++
++	/* Check channel */
++	if ((chan <= 0) || (chan > S2MU106_CH_MAX)) {
++		pr_err("%s: Wrong channel.\n", __func__);
++		return -EFAULT;
++	}
++
++	/* Set curr. */
++	s2mu106_fled_set_torch_curr(fled, chan, curr);
++
++	/* Test read */
++	s2mu106_fled_test_read(fled);
++
++	return size;
++}
++
++static ssize_t fled_mode_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	struct led_classdev *led_cdev = dev_get_drvdata(dev);
++	struct s2mu106_fled_data *fled =
++		container_of(led_cdev, struct s2mu106_fled_data, cdev);
++	int cnt = 0;
++	int mode = 0;
++	int i;
++	char str[1016] = {0,};
++
++	s2mu106_fled_test_read(fled);
++
++	for (i = 1; i <= S2MU106_CH_MAX; i++) {
++		mode = s2mu106_fled_get_mode(fled, i);
++		if (mode >= 0)
++			cnt += sprintf(str+strlen(str), "CH%02d: %s, ", i,
++				s2mu106_fled_mode_string[mode]);
++	}
++
++	cnt += sprintf(str+strlen(str), "\n");
++
++	strcpy(buf, str);
++
++	return cnt;
++}
++
++static ssize_t fled_mode_store(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t size)
++{
++	struct led_classdev *led_cdev = dev_get_drvdata(dev);
++	struct s2mu106_fled_data *fled =
++		container_of(led_cdev, struct s2mu106_fled_data, cdev);
++	int chan = -1;
++	int mode = -1;
++
++	sscanf(buf, "%d %d", &chan, &mode);
++
++	if ((chan <= 0) || (chan > S2MU106_CH_MAX) ||
++			(mode < 0) || (mode >= S2MU106_FLED_MODE_MAX)) {
++		pr_err("%s: channel: %d, mode: %d\n", __func__, chan, mode);
++		pr_err("%s: Wrong channel or mode.\n", __func__);
++		return -EFAULT;
++	}
++
++	if (fled->control_mode == CONTROL_I2C)
++		s2mu106_fled_set_mode(fled, chan, mode);
++	else {
++		if (mode == 1)
++			s2mu106_led_mode_ctrl(S2MU106_FLED_MODE_TORCH);
++		else if (mode == 2)
++			s2mu106_led_mode_ctrl(S2MU106_FLED_MODE_FLASH);
++		else
++			s2mu106_led_mode_ctrl(S2MU106_FLED_MODE_OFF);
++	}
++
++	s2mu106_fled_test_read(fled);
++
++	return size;
++}
++
++static DEVICE_ATTR(fled_mode, 0644, fled_mode_show, fled_mode_store);
++static DEVICE_ATTR(fled_flash_curr, 0644, fled_flash_curr_show, fled_flash_curr_store);
++static DEVICE_ATTR(fled_torch_curr, 0644, fled_torch_curr_show, fled_torch_curr_store);
++
++static struct attribute *s2mu106_fled_attrs[] = {
++	&dev_attr_fled_mode.attr,
++	&dev_attr_fled_flash_curr.attr,
++	&dev_attr_fled_torch_curr.attr,
++	NULL
++};
++ATTRIBUTE_GROUPS(s2mu106_fled);
++
++void s2mu106_fled_set_operation_mode(int mode)
++{
++	if(mode) {
++		s2mu106_fled_operating_mode(g_fled_data, TA_MODE);
++		g_fled_data->set_on_factory = 1;
++		pr_info("%s: TA only mode set\n", __func__);
++	}
++	else {
++		g_fled_data->set_on_factory = 0;
++		s2mu106_fled_operating_mode(g_fled_data, AUTO_MODE);
++		pr_info("%s: Auto control mode set\n", __func__);
++	}
++}
++
++static void s2mu106_fled_init(struct s2mu106_fled_data *fled)
++{
++	int i;
++	pr_info("%s: s2mu106_fled init start\n", __func__);
++
++	fled->is_en_flash = false;
++	if (gpio_is_valid(fled->pdata->flash_gpio) &&
++			gpio_is_valid(fled->pdata->torch_gpio)) {
++		pr_info("%s: s2mu106_fled gpio mode\n", __func__);
++		fled->control_mode = CONTROL_GPIO;
++		gpio_request_one(fled->flash_gpio, GPIOF_OUT_INIT_LOW, "LED_GPIO_OUTPUT_LOW");
++		gpio_request_one(fled->torch_gpio, GPIOF_OUT_INIT_LOW, "LED_GPIO_OUTPUT_LOW");
++		gpio_free(fled->flash_gpio);
++		gpio_free(fled->torch_gpio);
++		/* CAM_FLASH_EN -> FLASH gpio mode */
++		s2mu106_fled_set_mode(fled, 1, S2MU106_FLED_MODE_FLASH);
++		/* CAM_TORCH_EN -> TORCH gpio mode */
++		s2mu106_fled_set_mode(fled, 1, S2MU106_FLED_MODE_TORCH);
++
++		s2mu106_led_mode_ctrl(S2MU106_FLED_MODE_OFF);
++	} else {
++		fled->control_mode = CONTROL_I2C;
++	}
++
++	/* FLED driver operating mode set, TA only mode*/
++	fled->set_on_factory = 0;
++#if defined(CONFIG_SEC_FACTORY)
++	if(factory_mode) {
++		s2mu106_fled_operating_mode(fled, TA_MODE);
++		fled->set_on_factory = 1;
++	}
++#endif
++
++	/* for Flash Auto boost */
++	s2mu106_update_reg(fled->i2c, S2MU106_FLED_TEST3, 0x20, 0x20);
++	s2mu106_update_reg(fled->i2c, S2MU106_FLED_TEST4, 0x40, 0x40);
++
++	for (i = 1; i <= S2MU106_CH_MAX; i++) {
++		s2mu106_fled_set_flash_curr(fled, i, fled->default_current);
++		s2mu106_fled_set_torch_curr(fled, i, fled->default_current);
++	}
++	/* flash current set */
++	s2mu106_fled_set_flash_curr(fled, 1, fled->flash_current);
++
++	/* torch current set */
++	s2mu106_fled_set_torch_curr(fled, 1, fled->preflash_current);
++
++	/* w/a: prevent SMPL event in case of flash operation */
++	s2mu106_update_reg(fled->i2c, 0x21, 0x4, 0x7);
++	s2mu106_update_reg(fled->i2c, 0x89, 0x0, 0x3);
++
++	fled->psy_chg = power_supply_get_by_name("s2mu106-charger");
++
++	s2mu106_fled_test_read(fled);
++}
++
++#if defined(CONFIG_OF)
++static int s2mu106_led_dt_parse_pdata(struct device *dev,
++				struct s2mu106_fled_platform_data *pdata)
++{
++	struct device_node *led_np, *np, *c_np;
++	int ret;
++	u32 temp;
++	u32 index;
++
++	led_np = dev->parent->of_node;
++
++	if (!led_np) {
++		pr_err("<%s> could not find led sub-node led_np\n", __func__);
++		return -ENODEV;
++	}
++
++	np = of_find_node_by_name(led_np, "flash_led");
++	if (!np) {
++		pr_err("%s : could not find led sub-node np\n", __func__);
++		return -EINVAL;
++	}
++
++	ret = of_property_read_u32(np, "default_current",
++			&pdata->default_current);
++	if (ret < 0)
++		pr_err("%s : could not find default_current\n", __func__);
++
++	ret = of_property_read_u32(np, "max_current",
++			&pdata->max_current);
++	if (ret < 0)
++		pr_err("%s : could not find max_current\n", __func__);
++
++	ret = of_property_read_u32(np, "default_timer",
++			&pdata->default_timer);
++	if (ret < 0)
++		pr_err("%s : could not find default_timer\n", __func__);
++
++	ret = pdata->flash_gpio = of_get_named_gpio(np, "flash-gpio", 0);
++	if (ret < 0) {
++		pr_err("%s : can't get flash-gpio\n", __func__);
++		return ret;
++	}
++
++	ret = pdata->torch_gpio = of_get_named_gpio(np, "torch-gpio", 0);
++	if (ret < 0) {
++		pr_err("%s : can't get torch-gpio\n", __func__);
++		return ret;
++	}
++
++	ret = of_property_read_u32(np, "flash_current",
++			&pdata->flash_current);
++	if (ret < 0)
++		pr_err("%s : could not find flash_current\n", __func__);
++
++	ret = of_property_read_u32(np, "preflash_current",
++			&pdata->preflash_current);
++	if (ret < 0)
++		pr_err("%s : could not find flash_current\n", __func__);
++
++	ret = of_property_read_u32(np, "torch_current",
++			&pdata->torch_current);
++	if (ret < 0)
++		pr_err("%s : could not find torch_current\n", __func__);
++
++	ret = of_property_read_u32(np, "movie_current",
++			&pdata->movie_current);
++	if (ret < 0)
++		pr_err("%s : could not find movie_current\n", __func__);
++
++	ret = of_property_read_u32(np, "factory_current",
++			&pdata->factory_current);
++	if (ret < 0)
++		pr_err("%s : could not find factory_current\n", __func__);
++
++	ret = of_property_read_u32_array(np, "flashlight_current",
++			pdata->flashlight_current, S2MU106_FLASH_LIGHT_MAX);
++	if (ret < 0) {
++		pr_err("%s : could not find flashlight_current\n", __func__);
++
++		//default setting
++		pdata->flashlight_current[0] = 45;
++		pdata->flashlight_current[1] = 75;
++		pdata->flashlight_current[2] = 125;
++		pdata->flashlight_current[3] = 195;
++		pdata->flashlight_current[4] = 270;
++	}
++
++	pdata->chan_num = of_get_child_count(np);
++
++	if (pdata->chan_num > S2MU106_CH_MAX)
++		pdata->chan_num = S2MU106_CH_MAX;
++
++	pdata->channel = devm_kzalloc(dev,
++		sizeof(struct s2mu106_fled_chan) * pdata->chan_num, GFP_KERNEL);
++
++	for_each_child_of_node(np, c_np) {
++		ret = of_property_read_u32(c_np, "id", &temp);
++		if (ret < 0)
++			goto dt_err;
++		index = temp;
++
++		pr_info("%s: temp = %d, index = %d\n", __func__, temp, index);
++
++		if (index < S2MU106_CH_MAX) {
++			pdata->channel[index].id = index;
++
++			ret = of_property_read_u32_index(np, "current", index,
++					&pdata->channel[index].curr);
++			if (ret < 0) {
++				pr_err("%s : could not find current for channel%d\n",
++					__func__, pdata->channel[index].id);
++				pdata->channel[index].curr = pdata->default_current;
++			}
++
++			ret = of_property_read_u32_index(np, "timer", index,
++					&pdata->channel[index].timer);
++			if (ret < 0) {
++				pr_err("%s : could not find timer for channel%d\n",
++					__func__, pdata->channel[index].id);
++				pdata->channel[index].timer = pdata->default_timer;
++			}
++		}
++	}
++	return 0;
++
++dt_err:
++	pr_err("%s: DT parsing finish. ret = %d\n", __func__, ret);
++	return ret;
++}
++#endif /* CONFIG_OF */
++
++/* flashlight enable/disable function */
++static int s2mu106_enable(int value)
++{
++	int mode = -1;
++	int flash_current = 0;
++	int torch_current = 0;
++
++	pr_info("%s: enable start\n", __func__);
++
++	if ((value < 0)) {
++		pr_err("%s: value: %d\n", __func__, value);
++		pr_err("%s: Wrong mode.\n", __func__);
++		return -EFAULT;
++	}
++	pr_info("%s: %d: enable:\n", __func__,value );
++	g_fled_data->sysfs_input_data = value;
++
++	flash_current = g_fled_data->flash_current;
++	torch_current = g_fled_data->torch_current;
++
++	if (value <= 0) {
++		mode = S2MU106_FLED_MODE_OFF;
++	} else if (value == 1) {
++		mode = S2MU106_FLED_MODE_TORCH;
++		torch_current = s2mu106_fled_get_torch_curr(g_fled_data, 1);
++	} else if (value == 2) {
++		mode = S2MU106_FLED_MODE_FLASH;
++		flash_current = s2mu106_fled_get_flash_curr(g_fled_data, 1);
++	} else if (value == 100) {
++		/* Factory Torch*/
++		pr_info("%s: factory torch current [%d]\n", __func__, g_fled_data->factory_current);
++		torch_current = g_fled_data->factory_current;
++		mode = S2MU106_FLED_MODE_TORCH;
++	} else if (value == 200) {
++		/* Factory Flash */
++		pr_info("%s: factory flash current [%d]\n", __func__, g_fled_data->factory_current);
++		flash_current = g_fled_data->factory_current;
++		mode = S2MU106_FLED_MODE_FLASH;
++	} else if (value <= 1010 && value >= 1001) {
++		mode = S2MU106_FLED_MODE_TORCH;
++		/* (value) 1001, 1002, 1004, 1006, 1009 */
++		if (value <= 1001)
++			torch_current = g_fled_data->flashlight_current[0];
++		else if (value <= 1002)
++			torch_current = g_fled_data->flashlight_current[1];
++		else if (value <= 1004)
++			torch_current = g_fled_data->flashlight_current[2];
++		else if (value <= 1006)
++			torch_current = g_fled_data->flashlight_current[3];
++		else if (value <= 1009)
++			torch_current = g_fled_data->flashlight_current[4];
++		else
++			torch_current = g_fled_data->torch_current;
++		g_fled_data->sysfs_input_data = 1;
++	}
++
++	mutex_lock(&g_fled_data->lock);
++	if (g_fled_data->control_mode == CONTROL_I2C) {
++		s2mu106_fled_set_mode(g_fled_data, 1, mode);
++	} else {
++		if (mode == S2MU106_FLED_MODE_FLASH) {
++			pr_info("%s: %d: S2MU106_FLED_MODE_FLASH - %dmA\n", __func__, value, flash_current );
++			/* flash current set */
++			s2mu106_fled_set_flash_curr(g_fled_data, 1, flash_current);
++			s2mu106_led_mode_ctrl(S2MU106_FLED_MODE_FLASH);
++			fd_use = true;
++		} else if (mode == S2MU106_FLED_MODE_TORCH) {
++			pr_info("%s: %d: S2MU106_FLED_MODE_FACTORY - %dmA\n", __func__, value, torch_current );
++			/* torch current set */
++			s2mu106_fled_set_torch_curr(g_fled_data, 1, torch_current);
++			s2mu106_led_mode_ctrl(S2MU106_FLED_MODE_TORCH);
++			fd_use = true;
++		} else {
++			pr_info("%s: %d: S2MU106_FLED_MODE_OFF\n", __func__,value );
++
++			s2mu106_led_mode_ctrl(S2MU106_FLED_MODE_OFF);
++			fd_use = false;
++			/* flase, torch current set for initial current */
++			flash_current = g_fled_data->flash_current;
++			torch_current = g_fled_data->preflash_current;
++
++			/* flash current set */
++			s2mu106_fled_set_flash_curr(g_fled_data, 1, flash_current);
++			/* torch current set */
++			s2mu106_fled_set_torch_curr(g_fled_data, 1, torch_current);
++		}
++	}
++
++	mutex_unlock(&g_fled_data->lock);
++	pr_info("%s: enable END\n", __func__);
++	return 0;
++}
++
++static ssize_t rear_flash_store(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t size)
++{
++	int value = 0;
++
++	pr_info("%s: rear_flash_store start\n", __func__);
++	if ((buf == NULL) || kstrtouint(buf, 10, &value)) {
++		return -1;
++	}
++	s2mu106_enable(value);
++	pr_info("%s: rear_flash_store END\n", __func__);
++	return size;
++}
++
++static ssize_t rear_flash_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	return sprintf(buf, "%d\n", g_fled_data->sysfs_input_data);
++}
++
++
++static DEVICE_ATTR(rear_flash, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH,
++	rear_flash_show, rear_flash_store);
++
++int create_flash_sysfs(void)
++{
++	int err = -ENODEV;
++
++	if (IS_ERR_OR_NULL(camera_class)) {
++		pr_err("flash_sysfs: error, camera class not exist");
++		return -ENODEV;
++	}
++
++	flash_dev = device_create(camera_class, NULL, 0, NULL, "flash");
++	if (IS_ERR(flash_dev)) {
++		pr_err("flash_sysfs: failed to create device(flash)\n");
++		return -ENODEV;
++	}
++	err = device_create_file(flash_dev, &dev_attr_rear_flash);
++	if (unlikely(err < 0)) {
++		pr_err("flash_sysfs: failed to create device file, %s\n",
++				dev_attr_rear_flash.attr.name);
++	}
++
++	return 0;
++}
++
++int s2mu106_enable_external(int state, int curr) {
++	if(state) {
++		s2mu106_fled_set_curr(1, CAM_FLASH_MODE_SINGLE, curr);
++		s2mu106_fled_set_curr(1, CAM_FLASH_MODE_TORCH, curr);
++	}
++	s2mu106_enable(state);
++	return 0;
++}
++EXPORT_SYMBOL(s2mu106_enable_external);
++
++bool s2mu106_is_fd_in_use() {
++	return fd_use;
++}
++EXPORT_SYMBOL(s2mu106_is_fd_in_use);
++
++static int s2mu106_led_probe(struct platform_device *pdev)
++{
++	int ret = 0;
++	int cnt = 0;
++	struct s2mu106_dev *s2mu106 = dev_get_drvdata(pdev->dev.parent);
++	struct s2mu106_fled_data *fled_data;
++	char name[20];
++
++	pr_info("%s: s2mu106_fled start\n", __func__);
++
++	if (!s2mu106) {
++		dev_err(&pdev->dev, "drvdata->dev.parent not supplied\n");
++		return -ENODEV;
++	}
++
++	fled_data = devm_kzalloc(&pdev->dev,
++		sizeof(struct s2mu106_fled_data), GFP_KERNEL);
++	if (!fled_data) {
++		pr_err("%s: failed to allocate driver data\n", __func__);
++		return -ENOMEM;
++	}
++
++	fled_data->dev = &pdev->dev;
++	fled_data->i2c = s2mu106->i2c;
++	fled_data->pdata = devm_kzalloc(&pdev->dev,
++		sizeof(*(fled_data->pdata)), GFP_KERNEL);
++	if (!fled_data->pdata) {
++		pr_err("%s: failed to allocate platform data\n", __func__);
++		return -ENOMEM;
++	}
++
++	if (s2mu106->dev->of_node) {
++		ret = s2mu106_led_dt_parse_pdata(&pdev->dev, fled_data->pdata);
++		if (ret < 0) {
++			pr_err("%s: not found leds dt! ret=%d\n",
++				__func__, ret);
++			return -1;
++		}
++	}
++
++	platform_set_drvdata(pdev, fled_data);
++
++	/* Store fled_data for EXPORT_SYMBOL */
++	g_fled_data = fled_data;
++
++	snprintf(name, sizeof(name), "fled-s2mu106");
++	fled_data->cdev.name = name;
++	fled_data->cdev.groups = s2mu106_fled_groups;
++
++	ret = devm_led_classdev_register(&pdev->dev, &fled_data->cdev);
++	if (ret < 0) {
++		pr_err("%s: unable to register LED class dev\n", __func__);
++		return ret;
++	}
++
++	g_fled_data->flash_gpio			= fled_data->pdata->flash_gpio;
++	g_fled_data->torch_gpio			= fled_data->pdata->torch_gpio;
++	g_fled_data->default_current	= fled_data->pdata->default_current;
++	g_fled_data->flash_current 		= fled_data->pdata->flash_current;
++	g_fled_data->torch_current 		= fled_data->pdata->torch_current;
++	g_fled_data->preflash_current 	= fled_data->pdata->preflash_current;
++	g_fled_data->movie_current 		= fled_data->pdata->movie_current;
++	g_fled_data->factory_current 	= fled_data->pdata->factory_current;
++
++	for (cnt = 0; cnt < S2MU106_FLASH_LIGHT_MAX; cnt++) {
++		g_fled_data->flashlight_current[cnt] = fled_data->pdata->flashlight_current[cnt];
++	}
++
++	s2mu106_fled_init(g_fled_data);
++	mutex_init(&fled_data->lock);
++
++	//create sysfs for camera.
++	create_flash_sysfs();
++
++	pr_info("%s: s2mu106_fled loaded\n", __func__);
++	return 0;
++}
++
++static int s2mu106_led_remove(struct platform_device *pdev)
++{
++	device_remove_file(flash_dev, &dev_attr_rear_flash);
++	device_destroy(camera_class, 0);
++	class_destroy(camera_class);
++	mutex_destroy(&g_fled_data->lock);
++	return 0;
++}
++
++static const struct platform_device_id s2mu106_leds_id[] = {
++	{"leds-s2mu106", 0},
++	{},
++};
++
++static struct platform_driver s2mu106_led_driver = {
++	.driver = {
++		.name  = "leds-s2mu106",
++		.owner = THIS_MODULE,
++		},
++	.probe  = s2mu106_led_probe,
++	.remove = s2mu106_led_remove,
++	.id_table = s2mu106_leds_id,
++};
++
++static int __init s2mu106_led_driver_init(void)
++{
++	return platform_driver_register(&s2mu106_led_driver);
++}
++module_init(s2mu106_led_driver_init);
++
++static void __exit s2mu106_led_driver_exit(void)
++{
++	platform_driver_unregister(&s2mu106_led_driver);
++}
++module_exit(s2mu106_led_driver_exit);
++
++MODULE_AUTHOR("Keunho Hwang <keunho.hwang@samsung.com>");
++MODULE_DESCRIPTION("SAMSUNG s2mu106 flash LED Driver");
++MODULE_LICENSE("GPL");
+diff --git a/fs/crypto/Kconfig b/fs/crypto/Kconfig
+index 97c0a113f..c6042ff59 100644
+--- a/fs/crypto/Kconfig
++++ b/fs/crypto/Kconfig
+@@ -29,3 +29,12 @@ config FS_ENCRYPTION_INLINE_CRYPT
+ 	depends on FS_ENCRYPTION && BLK_INLINE_ENCRYPTION
+ 	help
+ 	  Enable fscrypt to use inline encryption hardware if available.
++
++config FSCRYPT_SDP
++	bool "Sensitive Data Protection for Per-file-encryption"
++	depends on FS_ENCRYPTION
++	depends on SDP
++	help
++	  Enable SDP functional to fscrypto module.
++	  This feature is supporting "Data-At-Rest" for file systems using
++	  Per-file-encryption being controlled by SDP user status.
+diff --git a/fs/crypto/Makefile b/fs/crypto/Makefile
+index 1a6b0774f..a2010327e 100644
+--- a/fs/crypto/Makefile
++++ b/fs/crypto/Makefile
+@@ -11,3 +11,4 @@ fscrypto-y := crypto.o \
+ 
+ fscrypto-$(CONFIG_BLOCK) += bio.o
+ fscrypto-$(CONFIG_FS_ENCRYPTION_INLINE_CRYPT) += inline_crypt.o
++fscrypto-$(CONFIG_FSCRYPT_SDP) += sdp/sdp_cache.o sdp/sdp_dek.o sdp/sdp_ioctl.o sdp/sdp_name.o sdp/sdp_xattr.o sdp/sdp_crypto.o
+diff --git a/security/selinux/Kconfig b/security/selinux/Kconfig
+index 349cda7a4..308ec2315 100644
+--- a/security/selinux/Kconfig
++++ b/security/selinux/Kconfig
+@@ -60,6 +60,20 @@ config SECURITY_SELINUX_DEVELOP
+ 	  permissive mode (if permitted by the policy) via
+ 	  /sys/fs/selinux/enforce.
+ 
++config ALWAYS_ENFORCE
++	bool "NSA SELinux Always Enforcing"
++	depends on SECURITY_SELINUX_DEVELOP
++	default n
++	help
++	  This option will prevent anything from setting SELinux to permissive.
++
++config ALWAYS_PERMISSIVE
++	bool "NSA SELinux Always Permissive"
++	depends on SECURITY_SELINUX_DEVELOP && !ALWAYS_ENFORCE
++	default n
++	help
++	  This option will prevent anything from setting SELinux to enforcing.
++
+ config SECURITY_SELINUX_AVC_STATS
+ 	bool "NSA SELinux AVC Statistics"
+ 	depends on SECURITY_SELINUX
+diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
+index 353fa0ec8..60b53ac53 100644
+--- a/security/selinux/hooks.c
++++ b/security/selinux/hooks.c
+@@ -7119,7 +7119,13 @@ static __init int selinux_init(void)
+ 	pr_info("SELinux:  Initializing.\n");
+ 
+ 	memset(&selinux_state, 0, sizeof(selinux_state));
++#if defined(CONFIG_ALWAYS_PERMISSIVE)
++	enforcing_set(&selinux_state, 0);
++#elif defined(CONFIG_ALWAYS_ENFORCE)
++	enforcing_set(&selinux_state, 1);
++#else
+ 	enforcing_set(&selinux_state, selinux_enforcing_boot);
++#endif
+ 	selinux_state.checkreqprot = selinux_checkreqprot_boot;
+ 	selinux_ss_init(&selinux_state.ss);
+ 	selinux_avc_init(&selinux_state.avc);
+diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
+index d93fd1a98..c9ce0bdfa 100644
+--- a/security/selinux/selinuxfs.c
++++ b/security/selinux/selinuxfs.c
+@@ -159,6 +159,11 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
+ 		goto out;
+ 
+ 	new_value = !!new_value;
++#if defined(CONFIG_ALWAYS_PERMISSIVE)
++	new_value = 0;
++#elif defined(CONFIG_ALWAYS_ENFORCE)
++	new_value = 1;
++#endif
+ 
+ 	old_value = enforcing_enabled(state);
+ 	if (new_value != old_value) {
+diff --git a/sound/soc/samsung/Kconfig b/sound/soc/samsung/Kconfig
+index 0520f5afd..b63e3958a 100644
+--- a/sound/soc/samsung/Kconfig
++++ b/sound/soc/samsung/Kconfig
+@@ -210,3 +210,9 @@ config SND_SOC_SAMSUNG_TM2_WM5110
+ 	  Say Y if you want to add support for SoC audio on the TM2 board.
+ 
+ endif #SND_SOC_SAMSUNG
++
++# --- A31 port: Samsung audio sysfs ---
++config SND_SOC_SAMSUNG_AUDIO
++	tristate "Audio support for Samsung Projects"
++	help
++	  Say Y here to enable audio support for the Samsung Audio.
+diff --git a/sound/soc/samsung/Makefile b/sound/soc/samsung/Makefile
+index c3b76035f..6da8df52a 100644
+--- a/sound/soc/samsung/Makefile
++++ b/sound/soc/samsung/Makefile
+@@ -64,3 +64,7 @@ obj-$(CONFIG_SND_SOC_BELLS) += snd-soc-bells.o
+ obj-$(CONFIG_SND_SOC_ODROID) += snd-soc-odroid.o
+ obj-$(CONFIG_SND_SOC_ARNDALE_RT5631_ALC5631) += snd-soc-arndale-rt5631.o
+ obj-$(CONFIG_SND_SOC_SAMSUNG_TM2_WM5110) += snd-soc-tm2-wm5110.o
++
++# --- A31 port: Samsung audio sysfs ---
++snd-soc-sec-audio-objs := sec_audio_sysfs.o jack_accdet_sysfs_cb.o
++obj-$(CONFIG_SND_SOC_SAMSUNG_AUDIO) += snd-soc-sec-audio.o
+diff --git a/sound/soc/samsung/jack_accdet_sysfs_cb.c b/sound/soc/samsung/jack_accdet_sysfs_cb.c
+new file mode 100644
+index 000000000..db8b4c642
+--- /dev/null
++++ b/sound/soc/samsung/jack_accdet_sysfs_cb.c
+@@ -0,0 +1,73 @@
++/*
++ *  jack_accdet_sysfs_cb.c
++ *  Copyright (c) Samsung Electronics
++ *
++ *   This program is free software; you can redistribute it and/or modify
++ *   it under the terms of the GNU General Public License as published by
++ *   the Free Software Foundation; either version 2 of the License, or
++ *   (at your option) any later version.
++ *
++ *   This program is distributed in the hope that it will be useful,
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *   GNU General Public License for more details.
++ *
++ *   You should have received a copy of the GNU General Public License
++ *   along with this program; if not, write to the Free Software
++ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
++ *
++ */
++
++#include <linux/printk.h>
++#include <sound/samsung/sec_audio_sysfs.h>
++#include "jack_accdet_sysfs_cb.h"
++
++static struct accdet_data *accdet_data;
++
++static int get_jack_status(void)
++{
++	int status = accdet_data->jack_state;
++	int report = 0;
++
++	if (status) {
++		report = 1;
++	}
++
++	pr_info("%s: %d\n", __func__, report);
++
++	return report;
++}
++
++static int get_key_status(void)
++{
++	int report = 0;
++
++	report = accdet_data->key_state;
++
++	pr_info("%s: %d\n", __func__, report);
++
++	return report;
++}
++
++static int get_mic_adc(void)
++{
++	int adc = 0;
++
++	adc = accdet_data->mic_adc;
++
++	pr_info("%s: %d\n", __func__, adc);
++
++	return adc;
++}
++
++void register_accdet_jack_cb(struct accdet_data *accdet_pdata)
++{
++	accdet_data = accdet_pdata;
++
++	pr_info("%s\n", __func__);
++
++	audio_register_jack_state_cb(get_jack_status);
++	audio_register_key_state_cb(get_key_status);
++	audio_register_mic_adc_cb(get_mic_adc);
++}
++EXPORT_SYMBOL_GPL(register_accdet_jack_cb);
+\ No newline at end of file
+diff --git a/sound/soc/samsung/jack_accdet_sysfs_cb.h b/sound/soc/samsung/jack_accdet_sysfs_cb.h
+new file mode 100644
+index 000000000..daa4ae750
+--- /dev/null
++++ b/sound/soc/samsung/jack_accdet_sysfs_cb.h
+@@ -0,0 +1,11 @@
++#ifndef _JACK_ACCDET_SYSFS_CB_H
++#define _JACK_ACCDET_SYSFS_CB_H
++
++struct accdet_data {
++	int jack_state;
++	int key_state;
++	int mic_adc;
++};
++
++void register_accdet_jack_cb(struct accdet_data *accdet_pdata);
++#endif /* _JACK_ACCDET_SYSFS_CB_H */
+diff --git a/sound/soc/samsung/sec_audio_sysfs.c b/sound/soc/samsung/sec_audio_sysfs.c
+new file mode 100644
+index 000000000..891587546
+--- /dev/null
++++ b/sound/soc/samsung/sec_audio_sysfs.c
+@@ -0,0 +1,693 @@
++/*
++ *  sec_audio_sysfs.c
++ *
++ *  Copyright (c) 2017 Samsung Electronics
++ *
++ *   This program is free software; you can redistribute it and/or modify
++ *   it under the terms of the GNU General Public License as published by
++ *   the Free Software Foundation; either version 2 of the License, or
++ *   (at your option) any later version.
++ *
++ *   This program is distributed in the hope that it will be useful,
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *   GNU General Public License for more details.
++ *
++ *   You should have received a copy of the GNU General Public License
++ *   along with this program; if not, write to the Free Software
++ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
++ *
++ */
++
++#include <linux/err.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/slab.h>
++#include <linux/time.h>
++#include <linux/uaccess.h>
++#include <linux/wait.h>
++
++#include <sound/samsung/sec_audio_sysfs.h>
++
++#define EARJACK_DEV_ID 0
++#define CODEC_DEV_ID 1
++#define AMP_DEV_ID 2
++
++/* bigdata add */
++#define DECLARE_AMP_BIGDATA_SYSFS(id) \
++static ssize_t audio_amp_##id##_temperature_max_show(struct device *dev, \
++	struct device_attribute *attr, char *buf) \
++{ \
++	int report = 0; \
++	if (audio_data->get_amp_temperature_max) \
++		report = audio_data->get_amp_temperature_max((id)); \
++	else \
++		dev_info(dev, "%s: No callback registered\n", __func__); \
++	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
++} \
++static DEVICE_ATTR(temperature_max_##id, 0664, \
++			audio_amp_##id##_temperature_max_show, NULL); \
++static ssize_t audio_amp_##id##_temperature_keep_max_show(struct device *dev, \
++	struct device_attribute *attr, char *buf) \
++{ \
++	int report = 0; \
++	if (audio_data->get_amp_temperature_keep_max) \
++		report = audio_data->get_amp_temperature_keep_max((id)); \
++	else \
++		dev_info(dev, "%s: No callback registered\n", __func__); \
++	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
++} \
++static DEVICE_ATTR(temperature_keep_max_##id, 0664, \
++			audio_amp_##id##_temperature_keep_max_show, NULL); \
++static ssize_t audio_amp_##id##_temperature_overcount_show(struct device *dev, \
++	struct device_attribute *attr, char *buf) \
++{ \
++	int report = 0; \
++	if (audio_data->get_amp_temperature_overcount) \
++		report = audio_data->get_amp_temperature_overcount((id)); \
++	else \
++		dev_info(dev, "%s: No callback registered\n", __func__); \
++	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
++} \
++static DEVICE_ATTR(temperature_overcount_##id, 0664, \
++			audio_amp_##id##_temperature_overcount_show, NULL); \
++static ssize_t audio_amp_##id##_excursion_max_show(struct device *dev, \
++	struct device_attribute *attr, char *buf) \
++{ \
++	int report = 0; \
++	if (audio_data->get_amp_excursion_max) \
++		report = audio_data->get_amp_excursion_max((id)); \
++	else \
++		dev_info(dev, "%s: No callback registered\n", __func__); \
++	return snprintf(buf, PAGE_SIZE, "%04d\n", report); \
++} \
++static DEVICE_ATTR(excursion_max_##id, 0664, \
++			audio_amp_##id##_excursion_max_show, NULL); \
++static ssize_t audio_amp_##id##_excursion_overcount_show(struct device *dev, \
++	struct device_attribute *attr, char *buf) \
++{ \
++	int report = 0; \
++	if (audio_data->get_amp_excursion_overcount) \
++		report = audio_data->get_amp_excursion_overcount(id); \
++	else \
++		dev_info(dev, "%s: No callback registered\n", __func__); \
++	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
++} \
++static DEVICE_ATTR(excursion_overcount_##id, 0664, \
++			audio_amp_##id##_excursion_overcount_show, NULL); \
++static ssize_t audio_amp_##id##_curr_temperature_show(struct device *dev, \
++	struct device_attribute *attr, char *buf) \
++{ \
++	int report = 0; \
++	if (audio_data->get_amp_curr_temperature) \
++		report = audio_data->get_amp_curr_temperature((id)); \
++	else \
++		dev_info(dev, "%s: No callback registered\n", __func__); \
++	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
++} \
++static DEVICE_ATTR(curr_temperature_##id, 0664, \
++			audio_amp_##id##_curr_temperature_show, NULL); \
++static ssize_t audio_amp_##id##_surface_temperature_store(struct device *dev, \
++	struct device_attribute *attr, const char *buf, size_t size) \
++{ \
++	int ret, temp = 0; \
++	ret = kstrtos32(buf, 10, &temp); \
++	if (audio_data->set_amp_surface_temperature) \
++		ret = audio_data->set_amp_surface_temperature((id), temp); \
++	else \
++		dev_info(dev, "%s: No callback registered\n", __func__); \
++	return size; \
++} \
++static DEVICE_ATTR(surface_temperature_##id, 0664, \
++			NULL, audio_amp_##id##_surface_temperature_store); \
++static struct attribute *audio_amp_##id##_attr[] = { \
++	&dev_attr_temperature_max_##id.attr, \
++	&dev_attr_temperature_keep_max_##id.attr, \
++	&dev_attr_temperature_overcount_##id.attr, \
++	&dev_attr_excursion_max_##id.attr, \
++	&dev_attr_excursion_overcount_##id.attr, \
++	&dev_attr_curr_temperature_##id.attr, \
++	&dev_attr_surface_temperature_##id.attr, \
++	NULL, \
++}
++
++static struct sec_audio_sysfs_data *audio_data;
++
++int audio_register_jack_select_cb(int (*set_jack) (int))
++{
++	if (audio_data->set_jack_state) {
++		dev_err(audio_data->jack_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->set_jack_state = set_jack;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_jack_select_cb);
++
++static ssize_t audio_jack_select_store(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t size)
++{
++	if (audio_data->set_jack_state) {
++		if ((!size) || (buf[0] != '1')) {
++			dev_info(dev, "%s: Forced remove jack\n", __func__);
++			audio_data->set_jack_state(0);
++		} else {
++			dev_info(dev, "%s: Forced detect jack\n", __func__);
++			audio_data->set_jack_state(1);
++		}
++	} else {
++		dev_info(dev, "%s: No callback registered\n", __func__);
++	}
++
++	return size;
++}
++
++static DEVICE_ATTR(select_jack, 0664,
++			NULL, audio_jack_select_store);
++
++int audio_register_jack_state_cb(int (*jack_state) (void))
++{
++	if (audio_data->get_jack_state) {
++		dev_err(audio_data->jack_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_jack_state = jack_state;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_jack_state_cb);
++
++static ssize_t audio_jack_state_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int report = 0;
++
++	if (audio_data->get_jack_state)
++		report = audio_data->get_jack_state();
++	else
++		dev_info(dev, "%s: No callback registered\n", __func__);
++
++	return snprintf(buf, 4, "%d\n", report);
++}
++
++static DEVICE_ATTR(state, 0664,
++			audio_jack_state_show, NULL);
++
++int audio_register_key_state_cb(int (*key_state) (void))
++{
++	if (audio_data->get_key_state) {
++		dev_err(audio_data->jack_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_key_state = key_state;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_key_state_cb);
++
++static ssize_t audio_key_state_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int report = 0;
++
++	if (audio_data->get_key_state)
++		report = audio_data->get_key_state();
++	else
++		dev_info(dev, "%s: No callback registered\n", __func__);
++
++	return snprintf(buf, 4, "%d\n", report);
++}
++
++static DEVICE_ATTR(key_state, 0664,
++			audio_key_state_show, NULL);
++
++int audio_register_mic_adc_cb(int (*mic_adc) (void))
++{
++	if (audio_data->get_mic_adc) {
++		dev_err(audio_data->jack_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_mic_adc = mic_adc;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_mic_adc_cb);
++
++static ssize_t audio_mic_adc_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int report = 0;
++
++	if (audio_data->get_mic_adc)
++		report = audio_data->get_mic_adc();
++	else
++		dev_info(dev, "%s: No callback registered\n", __func__);
++
++	return snprintf(buf, 16, "%d\n", report);
++}
++
++static DEVICE_ATTR(mic_adc, 0664,
++			audio_mic_adc_show, NULL);
++
++int audio_register_force_enable_antenna_cb(int (*force_enable_antenna) (int))
++{
++	if (audio_data->set_force_enable_antenna) {
++		dev_err(audio_data->jack_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->set_force_enable_antenna = force_enable_antenna;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_force_enable_antenna_cb);
++
++static ssize_t force_enable_antenna_store(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t size)
++{
++	if (audio_data->set_force_enable_antenna) {
++		if ((!size) || (buf[0] != '1')) {
++			dev_info(dev, "%s: antenna disable\n", __func__);
++			audio_data->set_force_enable_antenna(0);
++		} else {
++			dev_info(dev, "%s: update antenna enable\n", __func__);
++			audio_data->set_force_enable_antenna(1);
++		}
++	} else {
++		dev_info(dev, "%s: No callback registered\n", __func__);
++	}
++
++	return size;
++}
++
++static DEVICE_ATTR(force_enable_antenna, 0664,
++			NULL, force_enable_antenna_store);
++
++int audio_register_antenna_state_cb(int (*antenna_state) (void))
++{
++	if (audio_data->get_antenna_state) {
++		dev_err(audio_data->jack_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_antenna_state = antenna_state;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_antenna_state_cb);
++
++static ssize_t audio_antenna_state_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int report = 0;
++
++	if (audio_data->get_antenna_state)
++		report = audio_data->get_antenna_state();
++	else
++		dev_info(dev, "%s: No callback registered\n", __func__);
++
++	return snprintf(buf, 4, "%d\n", report);
++}
++
++static DEVICE_ATTR(antenna_state, 0664,
++			audio_antenna_state_show, NULL);
++
++static struct attribute *sec_audio_jack_attr[] = {
++	&dev_attr_select_jack.attr,
++	&dev_attr_state.attr,
++	&dev_attr_key_state.attr,
++	&dev_attr_mic_adc.attr,
++	&dev_attr_force_enable_antenna.attr,
++	&dev_attr_antenna_state.attr,
++	NULL,
++};
++
++static struct attribute_group sec_audio_jack_attr_group = {
++	.attrs = sec_audio_jack_attr,
++};
++
++int audio_register_codec_id_state_cb(int (*codec_id_state) (void))
++{
++	if (audio_data->get_codec_id_state) {
++		dev_err(audio_data->codec_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_codec_id_state = codec_id_state;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_codec_id_state_cb);
++
++static ssize_t audio_check_codec_id_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	int report = 0;
++
++	if (audio_data->get_codec_id_state)
++		report = audio_data->get_codec_id_state();
++	else
++		dev_info(dev, "%s: No callback registered\n", __func__);
++
++	return snprintf(buf, 4, "%d\n", report);
++}
++
++static DEVICE_ATTR(check_codec_id, 0664,
++			audio_check_codec_id_show, NULL);
++
++
++static struct attribute *sec_audio_codec_attr[] = {
++	&dev_attr_check_codec_id.attr,
++	NULL,
++};
++
++static struct attribute_group sec_audio_codec_attr_group = {
++	.attrs = sec_audio_codec_attr,
++};
++
++/* bigdata */
++int audio_register_temperature_max_cb(int (*temperature_max) (enum amp_id))
++{
++	if (audio_data->get_amp_temperature_max) {
++		dev_err(audio_data->amp_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_amp_temperature_max = temperature_max;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_temperature_max_cb);
++
++int audio_register_temperature_keep_max_cb(int (*temperature_keep_max) (enum amp_id))
++{
++	if (audio_data->get_amp_temperature_keep_max) {
++		dev_err(audio_data->amp_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_amp_temperature_keep_max = temperature_keep_max;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_temperature_keep_max_cb);
++
++int audio_register_temperature_overcount_cb(int (*temperature_overcount) (enum amp_id))
++{
++	if (audio_data->get_amp_temperature_overcount) {
++		dev_err(audio_data->amp_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_amp_temperature_overcount = temperature_overcount;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_temperature_overcount_cb);
++
++int audio_register_excursion_max_cb(int (*excursion_max) (enum amp_id))
++{
++	if (audio_data->get_amp_excursion_max) {
++		dev_err(audio_data->amp_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_amp_excursion_max = excursion_max;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_excursion_max_cb);
++
++int audio_register_excursion_overcount_cb(int (*excursion_overcount) (enum amp_id))
++{
++	if (audio_data->get_amp_excursion_overcount) {
++		dev_err(audio_data->amp_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_amp_excursion_overcount = excursion_overcount;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_excursion_overcount_cb);
++
++int audio_register_curr_temperature_cb(int (*curr_temperature) (enum amp_id))
++{
++	if (audio_data->get_amp_curr_temperature) {
++		dev_err(audio_data->amp_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->get_amp_curr_temperature = curr_temperature;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_curr_temperature_cb);
++
++int audio_register_surface_temperature_cb(int (*surface_temperature) (enum amp_id, int temperature))
++{
++	if (audio_data->set_amp_surface_temperature) {
++		dev_err(audio_data->amp_dev,
++				"%s: Already registered\n", __func__);
++		return -EEXIST;
++	}
++
++	audio_data->set_amp_surface_temperature = surface_temperature;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audio_register_surface_temperature_cb);
++
++DECLARE_AMP_BIGDATA_SYSFS(0);
++DECLARE_AMP_BIGDATA_SYSFS(1);
++DECLARE_AMP_BIGDATA_SYSFS(2);
++DECLARE_AMP_BIGDATA_SYSFS(3);
++
++static struct attribute_group sec_audio_amp_big_data_attr_group[AMP_ID_MAX] = {
++	[AMP_0] = {.attrs = audio_amp_0_attr, },
++	[AMP_1] = {.attrs = audio_amp_1_attr, },
++	[AMP_2] = {.attrs = audio_amp_2_attr, },
++	[AMP_3] = {.attrs = audio_amp_3_attr, },
++};
++
++static int sec_audio_sysfs_probe(struct platform_device *pdev)
++{
++	struct device_node *np = pdev->dev.of_node;
++	int i;
++
++	if (audio_data == NULL) {
++		dev_err(&pdev->dev, "%s: no audio_data\n", __func__);
++		return -ENOMEM;
++	}
++
++	audio_data->no_earjack = of_property_read_bool(np, "audio,no-earjack");
++
++	if (audio_data->no_earjack) {
++		dev_info(&pdev->dev, "%s: remove earjack sysfs dev\n", __func__);
++		if (audio_data->jack_dev) {
++			sysfs_remove_group(&audio_data->jack_dev->kobj,
++					&sec_audio_jack_attr_group);
++			device_destroy(audio_data->audio_class, EARJACK_DEV_ID);
++		}
++	}
++
++	of_property_read_u32(np, "audio,num-amp", &audio_data->num_amp);
++	if (audio_data->num_amp > 0) {
++		for (i = audio_data->num_amp; i < AMP_ID_MAX; i++) {
++			sysfs_remove_group(&audio_data->amp_dev->kobj,
++				&sec_audio_amp_big_data_attr_group[i]);
++		}
++	}
++
++	return 0;
++}
++
++static int sec_audio_sysfs_remove(struct platform_device *pdev)
++{
++	int i;
++
++	if (audio_data->num_amp == 0)
++		audio_data->num_amp = AMP_ID_MAX;
++
++	for (i = 0; i < audio_data->num_amp; i++) {
++		sysfs_remove_group(&audio_data->amp_dev->kobj,
++			&sec_audio_amp_big_data_attr_group[i]);
++	}
++
++	return 0;
++}
++
++#if IS_ENABLED(CONFIG_OF)
++static const struct of_device_id sec_audio_sysfs_of_match[] = {
++	{ .compatible = "samsung,audio-sysfs", },
++	{},
++};
++MODULE_DEVICE_TABLE(of, sec_audio_sysfs_of_match);
++#endif /* CONFIG_OF */
++
++static struct platform_driver sec_audio_sysfs_driver = {
++	.driver		= {
++		.name	= "sec-audio-sysfs",
++		.owner	= THIS_MODULE,
++		.of_match_table = of_match_ptr(sec_audio_sysfs_of_match),
++	},
++
++	.probe		= sec_audio_sysfs_probe,
++	.remove		= sec_audio_sysfs_remove,
++};
++
++static int __init sec_audio_sysfs_init(void)
++{
++	int ret = 0;
++	int i = 0;
++
++	audio_data = kzalloc(sizeof(struct sec_audio_sysfs_data), GFP_KERNEL);
++	if (audio_data == NULL)
++		return -ENOMEM;
++
++	audio_data->audio_class = class_create(THIS_MODULE, "audio");
++	if (IS_ERR(audio_data->audio_class)) {
++		pr_err("%s: Failed to create audio class\n", __func__);
++		ret = PTR_ERR(audio_data->audio_class);
++		goto err_alloc;
++	}
++
++	audio_data->jack_dev =
++			device_create(audio_data->audio_class,
++					NULL, EARJACK_DEV_ID, NULL, "earjack");
++	if (IS_ERR(audio_data->jack_dev)) {
++		pr_err("%s: Failed to create earjack device\n", __func__);
++		ret = PTR_ERR(audio_data->jack_dev);
++		goto err_class;
++	}
++
++	ret = sysfs_create_group(&audio_data->jack_dev->kobj,
++				&sec_audio_jack_attr_group);
++	if (ret) {
++		pr_err("%s: Failed to create earjack sysfs\n", __func__);
++		goto err_jack_device;
++	}
++
++	audio_data->codec_dev =
++			device_create(audio_data->audio_class,
++					NULL, CODEC_DEV_ID, NULL, "codec");
++	if (IS_ERR(audio_data->codec_dev)) {
++		pr_err("%s: Failed to create codec device\n", __func__);
++		ret = PTR_ERR(audio_data->codec_dev);
++		goto err_jack_attr;
++	}
++
++	ret = sysfs_create_group(&audio_data->codec_dev->kobj,
++				&sec_audio_codec_attr_group);
++	if (ret) {
++		pr_err("%s: Failed to create codec sysfs\n", __func__);
++		goto err_codec_device;
++	}
++
++	audio_data->amp_dev =
++			device_create(audio_data->audio_class,
++					NULL, AMP_DEV_ID, NULL, "amp");
++	if (IS_ERR(audio_data->amp_dev)) {
++		pr_err("%s: Failed to create amp device\n", __func__);
++		ret = PTR_ERR(audio_data->amp_dev);
++		goto err_codec_attr;
++	}
++
++	audio_data->num_amp = 0;
++
++	for (i = 0; i < AMP_ID_MAX; i++) {
++		ret = sysfs_create_group(&audio_data->amp_dev->kobj,
++			&sec_audio_amp_big_data_attr_group[i]);
++		if (ret) {
++			pr_err("%s: Failed to create amp sysfs\n", __func__);
++			goto err_amp_attr;
++		}
++	}
++
++	ret = platform_driver_register(&sec_audio_sysfs_driver);
++	if (ret) {
++		pr_err("%s : fail to register sysfs driver\n", __func__);
++		goto err_platform_register;
++	}
++
++	return ret;
++err_platform_register:
++	platform_driver_unregister(&sec_audio_sysfs_driver);
++
++err_amp_attr:
++	while (--i >= 0)
++		sysfs_remove_group(&audio_data->amp_dev->kobj,
++			&sec_audio_amp_big_data_attr_group[i]);
++	device_destroy(audio_data->audio_class, AMP_DEV_ID);
++	audio_data->amp_dev = NULL;
++err_codec_attr:
++	sysfs_remove_group(&audio_data->codec_dev->kobj,
++				&sec_audio_codec_attr_group);
++err_codec_device:
++	device_destroy(audio_data->audio_class, CODEC_DEV_ID);
++	audio_data->codec_dev = NULL;
++err_jack_attr:
++	sysfs_remove_group(&audio_data->jack_dev->kobj,
++				&sec_audio_jack_attr_group);
++err_jack_device:
++	device_destroy(audio_data->audio_class, EARJACK_DEV_ID);
++	audio_data->jack_dev = NULL;
++err_class:
++	class_destroy(audio_data->audio_class);
++	audio_data->audio_class = NULL;
++err_alloc:
++	kfree(audio_data);
++	audio_data = NULL;
++
++	return ret;
++}
++subsys_initcall(sec_audio_sysfs_init);
++
++static void __exit sec_audio_sysfs_exit(void)
++{
++	platform_driver_unregister(&sec_audio_sysfs_driver);
++
++	if (audio_data->amp_dev)
++		device_destroy(audio_data->audio_class, AMP_DEV_ID);
++
++	if (audio_data->codec_dev) {
++		sysfs_remove_group(&audio_data->codec_dev->kobj,
++				&sec_audio_codec_attr_group);
++		device_destroy(audio_data->audio_class, CODEC_DEV_ID);
++	}
++
++	if (audio_data->jack_dev) {
++		sysfs_remove_group(&audio_data->jack_dev->kobj,
++				&sec_audio_jack_attr_group);
++		device_destroy(audio_data->audio_class, EARJACK_DEV_ID);
++	}
++
++	if (audio_data->audio_class)
++		class_destroy(audio_data->audio_class);
++
++	kfree(audio_data);
++}
++module_exit(sec_audio_sysfs_exit);
++
++MODULE_DESCRIPTION("Samsung Electronics Audio SYSFS driver");
++MODULE_LICENSE("GPL");
+-- 
+2.43.0
+

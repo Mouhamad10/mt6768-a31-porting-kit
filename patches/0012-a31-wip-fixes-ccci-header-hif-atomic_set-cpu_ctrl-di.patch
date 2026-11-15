@@ -1,0 +1,985 @@
+From fe2cad4c50a013a34af87ff93834ef95d45f15c7 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 09:32:24 +0000
+Subject: [PATCH 12/29] a31: wip fixes (ccci header, hif atomic_set, cpu_ctrl,
+ display pm_qos externs, platform header redirects)
+
+---
+ .../os/linux/plat/mt6768/plat_priv.c          |   3 +-
+ .../misc/mediatek/eccci/hif/ccci_hif_ccif.h   |   5 +-
+ .../misc/mediatek/eccci/hif/ccci_hif_cldma.h  |   5 +-
+ .../misc/mediatek/eccci/hif/ccci_hif_dpmaif.h |   5 +-
+ .../mediatek/eccci/hif/net_speed_monitor.c    |  25 +-
+ .../misc/mediatek/include/mt-plat/mtk-mbox.h  | 327 +-----------------
+ .../include/mt-plat/mtk_ccci_common.h         |  48 +--
+ .../include/mt-plat/mtk_gpu_utility.h         | 135 +-------
+ .../include/mt-plat/mtk_tinysys_ipi.h         | 146 +-------
+ .../mediatek/include/mt-plat/perf_tracker.h   |  37 +-
+ .../video/mt6768/videox/primary_display.h     |   7 +-
+ include/linux/soc/mediatek/mtk-pm-qos.h       |   5 +
+ 12 files changed, 77 insertions(+), 671 deletions(-)
+
+diff --git a/drivers/misc/mediatek/connectivity/wlan_drv_gen4m/os/linux/plat/mt6768/plat_priv.c b/drivers/misc/mediatek/connectivity/wlan_drv_gen4m/os/linux/plat/mt6768/plat_priv.c
+index 07aa3ff80..e12326a77 100644
+--- a/drivers/misc/mediatek/connectivity/wlan_drv_gen4m/os/linux/plat/mt6768/plat_priv.c
++++ b/drivers/misc/mediatek/connectivity/wlan_drv_gen4m/os/linux/plat/mt6768/plat_priv.c
+@@ -10,6 +10,7 @@
+ */
+ 
+ #include <cpu_ctrl.h>
++#include <mt-plat/cpu_ctrl.h>
+ #include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <topo_ctrl.h>
+ #ifdef WLAN_FORCE_DDR_OPP
+@@ -39,7 +40,7 @@ int32_t kalBoostCpu(IN struct ADAPTER *prAdapter,
+ 		    IN uint32_t u4TarPerfLevel,
+ 		    IN uint32_t u4BoostCpuTh)
+ {
+-	struct ppm_limit_data freq_to_set[MAX_CLUSTER_NUM];
++	struct cpu_ctrl_data freq_to_set[MAX_CLUSTER_NUM];
+ 	int32_t i = 0, i4Freq = -1;
+ #ifdef WLAN_FORCE_DDR_OPP
+ 	static struct mtk_pm_qos_request wifi_qos_request;
+diff --git a/drivers/misc/mediatek/eccci/hif/ccci_hif_ccif.h b/drivers/misc/mediatek/eccci/hif/ccci_hif_ccif.h
+index 307a81537..bb7ad06a6 100644
+--- a/drivers/misc/mediatek/eccci/hif/ccci_hif_ccif.h
++++ b/drivers/misc/mediatek/eccci/hif/ccci_hif_ccif.h
+@@ -250,7 +250,10 @@ static inline int ccci_ccif_hif_set_wakeup_src(unsigned char hif_id, int value)
+ 		if (ccif_rx_ch & AP_MD_CCB_WAKEUP)
+ 			mtk_ccci_ccb_info_peek();
+ #endif
+-		return atomic_set(&md_ctrl->wakeup_src, value);
++		{
++			atomic_set(&md_ctrl->wakeup_src, value);
++			return value;
++		}
+ 	} else
+ 		return -1;
+ }
+diff --git a/drivers/misc/mediatek/eccci/hif/ccci_hif_cldma.h b/drivers/misc/mediatek/eccci/hif/ccci_hif_cldma.h
+index a7892af67..d031e0d68 100644
+--- a/drivers/misc/mediatek/eccci/hif/ccci_hif_cldma.h
++++ b/drivers/misc/mediatek/eccci/hif/ccci_hif_cldma.h
+@@ -424,7 +424,10 @@ static inline int ccci_cldma_hif_set_wakeup_src(unsigned char hif_id,
+ 		(struct md_cd_ctrl *)ccci_hif_get_by_id(hif_id);
+ 
+ 	if (md_ctrl)
+-		return atomic_set(&md_ctrl->wakeup_src, value);
++		{
++			atomic_set(&md_ctrl->wakeup_src, value);
++			return value;
++		}
+ 	else
+ 		return -1;
+ 
+diff --git a/drivers/misc/mediatek/eccci/hif/ccci_hif_dpmaif.h b/drivers/misc/mediatek/eccci/hif/ccci_hif_dpmaif.h
+index 2b00826ea..f78915ae9 100644
+--- a/drivers/misc/mediatek/eccci/hif/ccci_hif_dpmaif.h
++++ b/drivers/misc/mediatek/eccci/hif/ccci_hif_dpmaif.h
+@@ -471,7 +471,10 @@ static inline int ccci_dpmaif_hif_set_wakeup_src(unsigned char hif_id,
+ 		(struct hif_dpmaif_ctrl *)ccci_hif_get_by_id(hif_id);
+ 
+ 	if (hif_ctrl)
+-		return atomic_set(&hif_ctrl->wakeup_src, value);
++		{
++			atomic_set(&hif_ctrl->wakeup_src, value);
++			return value;
++		}
+ 	else
+ 		return -1;
+ 
+diff --git a/drivers/misc/mediatek/eccci/hif/net_speed_monitor.c b/drivers/misc/mediatek/eccci/hif/net_speed_monitor.c
+index b4a8ad3ee..18cd5fc9b 100644
+--- a/drivers/misc/mediatek/eccci/hif/net_speed_monitor.c
++++ b/drivers/misc/mediatek/eccci/hif/net_speed_monitor.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <linux/list.h>
++#include <mt-plat/cpu_ctrl.h>
+ #include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/device.h>
+ #include <linux/module.h>
+@@ -37,6 +38,24 @@
+ #include "ccci_hif_internal.h"
+ #include "ccci_platform.h"
+ #include "ccci_core.h"
++#include <linux/topology.h>
++
++/* A31 port: 4.19 has no arch_get_nr_clusters(); same helper as perf resym */
++static int a31_nr_clusters(void)
++{
++	int cpu, nr = 0, prev = -1;
++
++	for_each_possible_cpu(cpu) {
++		int id = topology_physical_package_id(cpu);
++
++		if (id != prev) {
++			nr++;
++			prev = id;
++		}
++	}
++	return nr;
++}
++
+ 
+ #define CALC_DELTA		(1000)
+ #define MAX_C_NUM		(4)
+@@ -49,7 +68,7 @@ struct spd_ds_ref {
+ 	u32 rps;
+ };
+ 
+-static struct ppm_limit_data *s_pld;
++static struct cpu_ctrl_data *s_pld;
+ static int s_cluster_num;
+ static struct dvfs_ref const *s_dl_dvfs_tbl;
+ static int s_dl_dvfs_items_num;
+@@ -446,8 +465,8 @@ int mtk_ccci_speed_monitor_init(void)
+ 				MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE);
+ 	init_waitqueue_head(&s_mon_wq);
+ 	kthread_run(speed_monitor_thread, NULL, "ccci_net_speed_monitor");
+-	s_cluster_num = arch_get_nr_clusters();
+-	s_pld = kcalloc(s_cluster_num, sizeof(struct ppm_limit_data),
++	s_cluster_num = a31_nr_clusters();
++	s_pld = kcalloc(s_cluster_num, sizeof(struct cpu_ctrl_data),
+ 				GFP_KERNEL);
+ 	if (s_pld) {
+ 		for (i = 0; i < s_cluster_num; i++) {
+diff --git a/drivers/misc/mediatek/include/mt-plat/mtk-mbox.h b/drivers/misc/mediatek/include/mt-plat/mtk-mbox.h
+index a88d9ff6c..f33cafe22 100644
+--- a/drivers/misc/mediatek/include/mt-plat/mtk-mbox.h
++++ b/drivers/misc/mediatek/include/mt-plat/mtk-mbox.h
+@@ -1,325 +1,2 @@
+-/*
+- * Copyright (C) 2019 MediaTek Inc.
+- *
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License version 2 as
+- * published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+- */
+-#ifndef __MTK_MBOX_H__
+-#define __MTK_MBOX_H__
+-
+-#include <linux/platform_device.h>
+-#include <linux/completion.h>
+-#include <linux/mutex.h>
+-#include <linux/spinlock.h>
+-
+-/*
+- * mbox slot size definition
+- * 1 slot for 4 bytes
+- */
+-#define MBOX_SLOT_SIZE 4
+-
+-struct mtk_mbox_pin_send;
+-struct mtk_mbox_pin_recv;
+-
+-typedef int (*mbox_rx_cb_t)(void *);
+-typedef int (*mbox_pin_cb_t)(unsigned int ipi_id, void *prdata, void *data,
+-	unsigned int len);
+-typedef void (*mbox_ipi_cb_t)(struct mtk_mbox_pin_recv *, void *);
+-
+-/*
+- * mbox receive information
+- *
+- * poll_count  :mbox polling success count
+- * recv_irq_count :mbox receive irq count
+- * notify_count   :mbox irq notify count
+- * cb_count :mbox execute callback function count
+- * pre_timestamp  :time stamp before callback function
+- * post_timestamp :time stamp after callback function
+- */
+-struct mtk_mbox_recv_record {
+-	uint32_t poll_count;
+-	uint32_t recv_irq_count;
+-	uint32_t notify_count;
+-	uint32_t cb_count;
+-	uint64_t pre_timestamp;
+-	uint64_t post_timestamp;
+-};
+-
+-/*
+- * mbox send information
+- *
+- */
+-struct mtk_mbox_send_record {
+-};
+-
+-/*
+- * mbox record information
+- *
+- * write_count    :mbox write success count
+- * busy_count     :mbox read success count
+- * trig_irq_count :mbox trigger irq success count
+- */
+-struct mtk_mbox_record {
+-	uint32_t write_count;
+-	uint32_t busy_count;
+-	uint32_t trig_irq_count;
+-};
+-
+-/*
+- * mbox pin structure, this is for send definition,
+- * ipi=endpoint=pin
+- * mbox     : (mbox number)mbox number of the pin, up to 16(plt)
+- * offset   : (slot)msg offset in share memory, up to 1024*4 KB(plt)
+- * send_opt : (opt)send opt, 0:send ,1: send for response(plt)
+- * lock     : (lock)polling lock 0:unuse,1:used
+- * msg_size : (slot)message size in words, 4 bytes alignment(plt)
+- * pin_index  : (bit offset)pin index in the mbox(plt)
+- * chan_id    : (u32) ipc channel id(plt)
+- * mutex      : (mutex)mutex for remote response
+- * completion : (completion)completion for remote response
+- * pin_lock   : (spinlock_t)lock of the pin
+- * send_record: send pin record information
+- */
+-struct mtk_mbox_pin_send {
+-	unsigned int mbox     : 4,
+-				 offset   : 20,
+-				 send_opt : 2,
+-				 lock    : 2;
+-	unsigned int msg_size;
+-	unsigned int pin_index;
+-	unsigned int chan_id;
+-	struct mutex mutex_send;
+-	struct completion comp_ack;  // to remove
+-	spinlock_t pin_lock;
+-	struct mtk_mbox_send_record send_record;
+-};
+-
+-/*
+- * mbox pin structure, this is for receive definition,
+- * ipi=endpoint=pin
+- * mbox     : (mbox number)mbox number of the pin, up to 16(plt)
+- * offset   : (slot)msg offset in share memory, up to 1024*4 KB(plt)
+- * recv_opt : (opt)recv option,  0:receive ,1: response(plt)
+- * lock     : (lock)polling lock 0:unuse,1:used
+- * buf_full_opt : (opt)buffer option 0:drop, 1:assert, 2:overwrite(plt)
+- * cb_ctx_opt : (opt)callback option 0:isr context, 1:process context(plt)
+- * msg_size   : (slot)msg used slots in the mbox, 4 bytes alignment(plt)
+- * pin_index  : (bit offset)pin index in the mbox(plt)
+- * chan_id : (u32) ipc channel id(plt)
+- * notify     : (completion)notify process
+- * mbox_pin_cb: (cb)cb function
+- * pin_buf : (void*)buffer point
+- * prdata  : (void*)private data
+- * pin_lock: (spinlock_t)lock of the pin
+- * recv_record: receive pin record information
+- */
+-struct mtk_mbox_pin_recv {
+-	unsigned int mbox     : 4,
+-				 offset   : 20,
+-				 recv_opt     : 2,
+-				 lock         : 2,
+-				 buf_full_opt : 2,
+-				 cb_ctx_opt   : 2;
+-	unsigned int msg_size;
+-	unsigned int pin_index;
+-	unsigned int chan_id;
+-	struct completion notify;
+-	mbox_pin_cb_t mbox_pin_cb;
+-	void *pin_buf;
+-	void *prdata;
+-	spinlock_t pin_lock;
+-	struct mtk_mbox_recv_record recv_record;
+-};
+-
+-
+-/*
+- * mtk mbox device,Mbox is a dedicate hardware of a tinysys consists of:
+- * 1) a share memory tightly coupled to the tinysys
+- * 2) several IRQs
+- *
+- * @ipi_cb: the callback handler for synchronization layer
+- * @ipi_priv: private data for synchronization layer
+- * @pre_cb: the callback handler in the begin of mbox receiving ipi
+- * @post_cb: the callback handler in the end of mbox receiving ipi
+- * @prdata: private data for the callback use
+- */
+-struct mtk_mbox_device {
+-	/* Identity of the device */
+-	const char *name;
+-	unsigned int id;
+-	/* Following are platform specific interface*/
+-	struct mtk_mbox_pin_recv *pin_recv_table;
+-	struct mtk_mbox_pin_send *pin_send_table;
+-	struct mtk_mbox_info *info_table;
+-	unsigned int count;
+-	unsigned int recv_count;
+-	unsigned int send_count;
+-	void (*memcpy_to_tiny)(void __iomem *dest, const void *src, int size);
+-	void (*memcpy_from_tiny)(void *dest, const void __iomem *src, int size);
+-	mbox_ipi_cb_t ipi_cb;
+-	void *ipi_priv;
+-	mbox_rx_cb_t pre_cb;
+-	mbox_rx_cb_t post_cb;
+-	void *prdata;
+-	bool log_enable;
+-};
+-
+-/*
+- * mbox callback function context definition
+- * 0: isr context, 1:process context
+- */
+-enum MBOX_PIN_CTX {
+-	MBOX_CB_IN_ISR   = 0,
+-	MBOX_CB_IN_PROCESS  = 1,
+-};
+-
+-/*
+- * mbox buffer full action definition
+- * 0:drop, 1:assert, 2:overwrite
+- */
+-enum MBOX_BUF_OPT {
+-	MBOX_BUF_FULL_DROP       = 0,
+-	MBOX_BUF_FULL_ASSERT     = 1,
+-	MBOX_BUF_FULL_OVERWRITE  = 2,
+-	MBOX_BUF_COPY_DONE       = 3,
+-	MBOX_BUF_FULL_RET        = 4,
+-};
+-
+-/*
+- * mbox recv action definition
+- * 0:receive message, 1:receive ack
+- */
+-enum MBOX_RECV_OPT {
+-	MBOX_RECV_MESSAGE  = 0,
+-	MBOX_RECV_ACK      = 1,
+-};
+-
+-/*
+- * mbox information
+- *
+- * mbdev  :mbox device
+- * irq_num:identity of mbox irq
+- * id     :mbox id
+- * slot   :how many slots that mbox used
+- * opt    :option for tx mode, 0:mbox, 1:share memory 2:queue
+- * enable :mbox status, 0:disable, 1: enable
+- * is64d  :mbox is64d status, 0:32d, 1: 64d
+- * base   :mbox base address
+- * set_irq_reg  :mbox set irq register
+- * clr_irq_reg  :mbox clear irq register
+- * init_base_reg:mbox initialize register
+- * mbox lock    :lock of mbox
+- * record       :mbox record information
+- */
+-struct mtk_mbox_info {
+-	struct mtk_mbox_device *mbdev;
+-	int irq_num;
+-	unsigned int id;
+-	unsigned int slot;
+-	unsigned int opt;
+-	bool enable;
+-	bool is64d;
+-	void __iomem *base;
+-	void __iomem *set_irq_reg;
+-	void __iomem *clr_irq_reg;
+-	void __iomem *init_base_reg;
+-	void __iomem *send_status_reg;
+-	void __iomem *recv_status_reg;
+-	spinlock_t mbox_lock;
+-	struct mtk_mbox_record record;
+-};
+-
+-/*
+- * mbox return value definition
+- */
+-enum MBOX_RETURN {
+-	MBOX_READ_SZ_ERR  = -6,
+-	MBOX_WRITE_SZ_ERR = -5,
+-	MBOX_PARA_ERR     = -4,
+-	MBOX_CONFIG_ERR   = -3,
+-	MBOX_IRQ_ERR      = -2,
+-	MBOX_PLT_ERR      = -1,
+-	MBOX_DONE         = 0,
+-	MBOX_PIN_BUSY     = 1,
+-};
+-
+-/*
+- * mbox message options
+- * 0: mbox
+- * 1: share memory
+- * 2: mbox with queue
+- * 3: share memory with queue
+- */
+-enum {
+-	MBOX_OPT_DIRECT = 0,
+-	MBOX_OPT_SMEM   = 1,
+-	MBOX_OPT_QUEUE_DIR  = 2,
+-	MBOX_OPT_QUEUE_SMEM  = 3,
+-};
+-
+-/*
+- * mtk ipi message header
+- *
+- * id       :message id
+- * len      :data length in byte
+- * options  :options
+- * reserved :reserved
+- */
+-struct mtk_ipi_msg_hd {
+-	uint32_t id;
+-	uint32_t len;
+-	uint32_t options;
+-	uint32_t reserved;
+-};
+-
+-struct mtk_ipi_msg {
+-	struct mtk_ipi_msg_hd ipihd;
+-	void *data;
+-};
+-
+-int mtk_mbox_write_hd(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		unsigned int slot, void *msg);
+-int mtk_mbox_read_hd(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		unsigned int slot, void *dest);
+-int mtk_mbox_write(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		unsigned int slot, void *data, unsigned int len);
+-int mtk_mbox_read(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		unsigned int slot, void *data, unsigned int len);
+-int mtk_mbox_clr_irq(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		unsigned int irq);
+-int mtk_mbox_trigger_irq(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		unsigned int irq);
+-unsigned int mtk_mbox_read_recv_irq(struct mtk_mbox_device *mbdev,
+-		unsigned int mbox);
+-int mtk_mbox_set_base_addr(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		unsigned int addr);
+-unsigned int mtk_mbox_check_send_irq(struct mtk_mbox_device *mbdev,
+-		unsigned int mbox, unsigned int pin_index);
+-int mtk_mbox_probe(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
+-		unsigned int mbox);
+-int mtk_mbox_scp_probe(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
+-		unsigned int mbox);
+-int mtk_mbox_cb_register(struct mtk_mbox_device *mbdev, unsigned int pin_offset,
+-		mbox_pin_cb_t mbox_pin_cb, void *prdata);
+-int mtk_mbox_polling(struct mtk_mbox_device *mbdev, unsigned int mbox,
+-		void *data, struct mtk_mbox_pin_recv *pin_recv);
+-int mtk_smem_init(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
+-		unsigned int mbox, void __iomem *base,
+-		void __iomem *set_irq_reg, void __iomem *clr_irq_reg,
+-		void __iomem *send_status_reg, void __iomem *recv_status_reg);
+-void mtk_mbox_dump_all(struct mtk_mbox_device *mbdev);
+-void mtk_mbox_dump_recv(struct mtk_mbox_device *mbdev, unsigned int pin);
+-void mtk_mbox_dump_recv_pin(struct mtk_mbox_device *mbdev,
+-	struct mtk_mbox_pin_recv *pin_recv);
+-void mtk_mbox_dump_send(struct mtk_mbox_device *mbdev, unsigned int pin);
+-void mtk_mbox_dump(struct mtk_mbox_device *mbdev, unsigned int mbox);
+-int mtk_mbox_log_enable(struct mtk_mbox_device *mbdev, bool enable);
+-void mtk_mbox_reset_record(struct mtk_mbox_device *mbdev);
+-#endif
+-
++/* A31 port: redirect to the 4.19 header */
++#include <linux/soc/mediatek/mtk-mbox.h>
+diff --git a/drivers/misc/mediatek/include/mt-plat/mtk_ccci_common.h b/drivers/misc/mediatek/include/mt-plat/mtk_ccci_common.h
+index f855e6cf8..36c5b6dc0 100644
+--- a/drivers/misc/mediatek/include/mt-plat/mtk_ccci_common.h
++++ b/drivers/misc/mediatek/include/mt-plat/mtk_ccci_common.h
+@@ -1,6 +1,14 @@
+-/* SPDX-License-Identifier: GPL-2.0 */
+ /*
+  * Copyright (C) 2016 MediaTek Inc.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+  */
+ 
+ #ifndef __MT_CCCI_COMMON_H__
+@@ -48,15 +56,12 @@ enum MD_LOAD_TYPE {
+ 	modem_ultwcg,
+ 	modem_ulftg,
+ 	modem_ulfctg,
+-#if 0
+ 	modem_unlwg,
+ 	modem_unlwtg,
+ 	modem_unlwctg,
+ 	modem_unlwcg,
+ 	modem_unltctg,
+ 	MAX_IMG_NUM = modem_unltctg /* this enum starts from 1 */
+-#endif
+-	MAX_IMG_NUM = modem_ulfctg /* this enum starts from 1 */
+ };
+ 
+ /* MD logger configure file */
+@@ -320,8 +325,6 @@ enum{
+ 	(CCCI_ERR_LOAD_IMG_START_ID+13)
+ #define CCCI_ERR_LOAD_IMG_NOT_FOUND \
+ 	(CCCI_ERR_LOAD_IMG_START_ID+13)
+-
+-/* -- boot mode  -- */
+ #define DISABLE_MTK_BOOT_MODE 1
+ 
+ /* export to other kernel modules, */
+@@ -407,6 +410,7 @@ enum {
+ 	MD_RF_HOPPING_NOTIFY = 0x121,
+ 	/* 0x125 for CCMSG_ID_SYSMSGSVC_RF_HOPPING_NOTIFY */
+ 	MD_CAMERA_FRE_HOPPING = 0x125,
++	MD_CARKIT_STATUS = 0x126,
+ 
+ 	CCMSG_ID_SYSMSGSVC_LOWPWR_APSTS_NOTIFY = 0x128,
+ 
+@@ -541,43 +545,38 @@ enum SMEM_USER_ID {
+ 
+ 	/* squence of other users does not matter */
+ 	SMEM_USER_RAW_CCB_CTRL,
+-	SMEM_USER_RAW_DHL, /* 5 */
++	SMEM_USER_RAW_DHL,
+ 	SMEM_USER_RAW_MDM,
+ 	SMEM_USER_RAW_NETD,
+ 	SMEM_USER_RAW_USB,
+ 	SMEM_USER_RAW_AUDIO,
+-	SMEM_USER_RAW_DFD, /* 10 */
++	SMEM_USER_RAW_DFD,
+ 	SMEM_USER_RAW_LWA,
+ 	SMEM_USER_RAW_MDCCCI_DBG,
+ 	SMEM_USER_RAW_MDSS_DBG,
+ 	SMEM_USER_RAW_RUNTIME_DATA,
+-	SMEM_USER_RAW_FORCE_ASSERT, /* 15 */
++	SMEM_USER_RAW_FORCE_ASSERT,
+ 	SMEM_USER_CCISM_SCP,
+ 	SMEM_USER_RAW_MD2MD,
+ 	SMEM_USER_RAW_RESERVED,
+ 	SMEM_USER_CCISM_MCU,
+-	SMEM_USER_CCISM_MCU_EXP, /* 20 */
++	SMEM_USER_CCISM_MCU_EXP,
+ 	SMEM_USER_SMART_LOGGING,
+ 	SMEM_USER_RAW_MD_CONSYS,
+ 	SMEM_USER_RAW_PHY_CAP,
+ 	SMEM_USER_RAW_USIP,
+-	SMEM_USER_RESV_0, /* 25. Sync to MT6779 SMEM_USER_MAX_K */
++	SMEM_USER_RESV_0, /* Sync to MT6779 SMEM_USER_MAX_K */
+ 	SMEM_USER_ALIGN_PADDING, /* Sync to MT6779 SMEM_USER_NON_PADDING */
+ 	SMEM_USER_RAW_UDC_DATA,
+ 	SMEM_USER_RAW_UDC_DESCTAB,
+ 	SMEM_USER_RAW_AMMS_POS,
+-	SMEM_USER_RAW_ALIGN_PADDING, /* 30.= SMEM_USER_RAW_AMMS_ALIGN_PADDING */
+-	SMEM_USER_MD_WIFI_PROXY, /* 31 */
+-	SMEM_USER_MD_NVRAM_CACHE, /* 32 */
++	SMEM_USER_RAW_ALIGN_PADDING,
++	SMEM_USER_MD_WIFI_PROXY,
++	SMEM_USER_MD_NVRAM_CACHE,
+ 	SMEM_USER_LOW_POWER,
++	SMEM_USER_MD_BIGDATA,
++	SMEM_USER_MD_IPCA_BIGDATA,
+ 	SMEM_USER_SECURITY_SMEM,
+-	SMEM_USER_SAP_EX_DBG, /* 35 */
+-	SMEM_USER_SAP_DFD_DBG, /* 36 */
+-	SMEM_USER_32K_LOW_POWER,
+-	SMEM_USER_USB_DATA,
+-	SMEM_USER_MD_CDMR, /* CDMR:Crash Dump Memory Region/MIDR:Modem Internals Dump Region */
+-	SMEM_USER_RESERVED, /* 40 */
+-	SMEM_USER_MD_DRDI, /* 41 */
+ 	SMEM_USER_MAX,
+ };
+ 
+@@ -675,7 +674,7 @@ int modem_dcd_state(void);
+ void notify_time_update(void);
+ int wait_time_update_notify(void);
+ /* callback for system power off*/
+-//void ccci_power_off(void);
++void ccci_power_off(void);
+ /* LK load modem, Export by ccci util */
+ int modem_run_env_ready(int md_id);
+ int get_lk_load_md_info(char buf[], int size);
+@@ -690,6 +689,7 @@ void clear_meta_1st_boot_arg(int md_id);
+ #define CCCI_DUMP_CLR_BUF_FLAG		(1<<1)
+ #define CCCI_DUMP_CURR_FLAG		(1<<2)
+ #define CCCI_DUMP_ANDROID_TIME_FLAG	(1<<3)
++
+ enum {
+ 	CCCI_DUMP_INIT = 0,
+ 	CCCI_DUMP_BOOTUP,
+@@ -734,9 +734,9 @@ unsigned int get_soc_md_rt_rat(int md_id);
+ int check_rat_at_rt_setting(int md_id, char str[]);
+ unsigned int get_soc_md_rt_rat_idx(int md_id);
+ int set_soc_md_rt_rat_by_idx(int md_id, unsigned int wm_idx);
+-int get_nc_smem_region_info(unsigned int id, unsigned int *ap_off,
+-                            unsigned int *md_off, unsigned int *size);
+ 
++int get_nc_smem_region_info(unsigned int id, unsigned int *ap_off,
++				unsigned int *md_off, unsigned int *size);
+ int get_md_resv_csmem_info(int md_id, phys_addr_t *buf_base,
+ 	unsigned int *buf_size);
+ int get_md_cache_region_info(int region_id, unsigned int *buf_base,
+diff --git a/drivers/misc/mediatek/include/mt-plat/mtk_gpu_utility.h b/drivers/misc/mediatek/include/mt-plat/mtk_gpu_utility.h
+index 99207e05b..6c3115e79 100644
+--- a/drivers/misc/mediatek/include/mt-plat/mtk_gpu_utility.h
++++ b/drivers/misc/mediatek/include/mt-plat/mtk_gpu_utility.h
+@@ -1,133 +1,2 @@
+-/*
+- * Copyright (C) 2015 MediaTek Inc.
+- *
+- * This program is free software: you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License version 2 as
+- * published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+- * GNU General Public License for more details.
+- */
+-
+-#ifndef __MTK_GPU_UTILITY_H__
+-#define __MTK_GPU_UTILITY_H__
+-
+-#include <linux/types.h>
+-
+-#define MTK_GPU_DVFS_TYPE_LIST {\
+-MTK_GPU_DVFS_TYPE_ITEM(NONE) \
+-MTK_GPU_DVFS_TYPE_ITEM(SMARTBOOST) \
+-MTK_GPU_DVFS_TYPE_ITEM(VSYNCBASED) \
+-MTK_GPU_DVFS_TYPE_ITEM(FALLBACK) \
+-MTK_GPU_DVFS_TYPE_ITEM(TIMERBASED) \
+-MTK_GPU_DVFS_TYPE_ITEM(FASTDVFS) \
+-MTK_GPU_DVFS_TYPE_ITEM(TOUCHBOOST) \
+-MTK_GPU_DVFS_TYPE_ITEM(THERMAL) \
+-MTK_GPU_DVFS_TYPE_ITEM(CUSTOMIZATION)}
+-
+-typedef enum MTK_GPU_DVFS_TYPE_TAG
+-#define MTK_GPU_DVFS_TYPE_ITEM(type) MTK_GPU_DVFS_TYPE_##type,
+-MTK_GPU_DVFS_TYPE_LIST
+-#undef MTK_GPU_DVFS_TYPE_ITEM
+-MTK_GPU_DVFS_TYPE;
+-
+-#define GT_MAKE_BIT(start_bit, index) ((index##u) << (start_bit))
+-enum GPU_TUNER_FEATURE {
+-	MTK_GPU_TUNER_ANISOTROPIC_DISABLE = GT_MAKE_BIT(0, 1),
+-	MTK_GPU_TUNER_TRILINEAR_DISABLE = GT_MAKE_BIT(1, 1),
+-};
+-
+-#ifdef __cplusplus
+-extern "C"
+-{
+-#endif
+-
+-/* returning false indicated no implement */
+-
+-/* unit: x bytes */
+-bool mtk_get_gpu_memory_usage(unsigned int *pMemUsage);
+-bool mtk_get_gpu_page_cache(unsigned int *pPageCache);
+-
+-/* unit: 0~100 % */
+-bool mtk_get_gpu_loading(unsigned int *pLoading);
+-bool mtk_get_gpu_loading2(unsigned int *pLoading, int reset);
+-bool mtk_get_gpu_block(unsigned int *pBlock);
+-bool mtk_get_gpu_idle(unsigned int *pIlde);
+-bool mtk_get_gpu_freq(unsigned int *pFreq);
+-
+-bool mtk_get_gpu_GP_loading(unsigned int *pLoading);
+-bool mtk_get_gpu_PP_loading(unsigned int *pLoading);
+-bool mtk_get_gpu_power_loading(unsigned int *pLoading);
+-
+-bool mtk_enable_gpu_dvfs_timer(bool bEnable);
+-bool mtk_boost_gpu_freq(void);
+-bool mtk_set_bottom_gpu_freq(unsigned int ui32FreqLevel);
+-
+-/* ui32FreqLevel: 0=>lowest freq, count-1=>highest freq */
+-bool mtk_custom_get_gpu_freq_level_count(unsigned int *pui32FreqLevelCount);
+-bool mtk_custom_boost_gpu_freq(unsigned int ui32FreqLevel);
+-bool mtk_custom_upbound_gpu_freq(unsigned int ui32FreqLevel);
+-bool mtk_get_custom_boost_gpu_freq(unsigned int *pui32FreqLevel);
+-bool mtk_get_custom_upbound_gpu_freq(unsigned int *pui32FreqLevel);
+-
+-bool mtk_dump_gpu_memory_usage(void);
+-
+-bool mtk_get_gpu_dvfs_from(MTK_GPU_DVFS_TYPE *peType, unsigned long *pulFreq);
+-bool mtk_get_3D_fences_count(int *pi32Count);
+-bool mtk_get_vsync_based_target_freq(unsigned long *pulFreq);
+-bool mtk_get_gpu_sub_loading(unsigned int *pLoading);
+-bool mtk_get_gpu_bottom_freq(unsigned long *pulFreq);
+-bool mtk_get_gpu_custom_boost_freq(unsigned long *pulFreq);
+-bool mtk_get_gpu_custom_upbound_freq(unsigned long *pulFreq);
+-bool mtk_get_vsync_offset_event_status(unsigned int *pui32EventStatus);
+-bool mtk_get_vsync_offset_debug_status(unsigned int *pui32DebugStatus);
+-bool mtk_dvfs_margin_value(int i32MarginValue);
+-bool mtk_get_dvfs_margin_value(int *pi32MarginValue);
+-bool mtk_loading_base_dvfs_step(int i32StepValue);
+-bool mtk_get_loading_base_dvfs_step(int *pi32StepValue);
+-bool mtk_timer_base_dvfs_margin(int i32MarginValue);
+-bool mtk_get_timer_base_dvfs_margin(int *pi32MaginValue);
+-bool mtk_dvfs_loading_mode(int i32LoadingMode);
+-bool mtk_get_dvfs_loading_mode(unsigned int *pui32LoadingMode);
+-
+-/* CAP */
+-bool mtk_get_gpu_dvfs_cal_freq(unsigned long *pulGpu_tar_freq);
+-
+-/* MET */
+-bool mtk_enable_gpu_perf_monitor(bool enable);
+-
+-/* GPU PMU should be implemented by GPU IP-dep code */
+-typedef struct {
+-	int id;
+-	const char *name;
+-	unsigned int value;
+-	int overflow;
+-} GPU_PMU;
+-bool mtk_get_gpu_pmu_init(GPU_PMU *pmus, int pmu_size, int *ret_size);
+-bool mtk_get_gpu_pmu_swapnreset(GPU_PMU *pmus, int pmu_size);
+-bool mtk_get_gpu_pmu_deinit(void);
+-bool mtk_get_gpu_pmu_swapnreset_stop(void);
+-
+-typedef void (*gpu_power_change_notify_fp)(int power_on);
+-
+-bool mtk_register_gpu_power_change(const char *name,
+-	gpu_power_change_notify_fp callback);
+-bool mtk_unregister_gpu_power_change(const char *name);
+-
+-/* GPU POWER NOTIFY should be called by GPU only */
+-void mtk_notify_gpu_power_change(int power_on);
+-
+-/* Quality Tuner */
+-bool mtk_gpu_tuner_hint_set(char *packagename,
+-	enum GPU_TUNER_FEATURE eFeature);
+-bool mtk_gpu_tuner_hint_restore(char *packagename,
+-	enum GPU_TUNER_FEATURE eFeature);
+-bool mtk_gpu_tuner_get_stauts_by_packagename(char *packagename, int *feature);
+-
+-#ifdef __cplusplus
+-}
+-#endif
+-
+-#endif
++/* A31 port: use the 4.19 GPU platform header (GED/mali r25p0 are the 4.19 ones) */
++#include "../../../../gpu/mediatek/mt-plat/mtk_gpu_utility.h"
+diff --git a/drivers/misc/mediatek/include/mt-plat/mtk_tinysys_ipi.h b/drivers/misc/mediatek/include/mt-plat/mtk_tinysys_ipi.h
+index 3ccf074ec..81191bc1c 100644
+--- a/drivers/misc/mediatek/include/mt-plat/mtk_tinysys_ipi.h
++++ b/drivers/misc/mediatek/include/mt-plat/mtk_tinysys_ipi.h
+@@ -1,144 +1,2 @@
+-/*
+- * Copyright (C) 2019 MediaTek Inc.
+- *
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License version 2 as
+- * published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+- */
+-#ifndef __MTK_TINYSYS_IPI_H__
+-#define __MTK_TINYSYS_IPI_H__
+-
+-#include <linux/platform_device.h>
+-#include <mt-plat/mtk-mbox.h>
+-
+-
+-#define IPI_SEND_WAIT       0
+-#define IPI_SEND_POLLING    1
+-
+-enum mtk_ipi_dev {
+-	IPI_DEV_SCP,
+-	IPI_DEV_SSPM,
+-	IPI_DEV_ADSP,
+-	IPI_DEV_MCUPM,
+-	IPI_DEV_CPUEB,
+-	IPI_DEV_APUSYS,
+-	IPI_DEV_TOTAL,
+-};
+-
+-enum ipi_stage {
+-	SEND_MSG,
+-	ISR_RECV_MSGV,
+-	RECV_MSG,
+-	SEND_ACK,
+-	ISR_RECV_ACK,
+-	RECV_ACK,
+-	UNUSED = 0xF,
+-};
+-
+-typedef int (*ipi_tx_cb_t)(void *);
+-
+-struct ipimon_s {
+-	unsigned short idx;
+-	unsigned long long ts;
+-};
+-
+-/**
+- * struct mtk_ipi_chan_table - channel table that belong to mtk_ipi_device
+- * @ept: the rpmsg endpoint of this channel
+- * @rpchan: info used to create the endpoint
+- * @pin_send: the mbox send pin table address of this channel
+- * @pin_recv: the mbox receive pin table address of this channel
+- * @holder: keep 1 if there are ipi waiters (to wait the reply)
+- * @ipi_stage: transmission stage for t0~t5 (default is 0xF)
+- * @ipi_seqno: sequence count of the IPI pin processed
+- * @ipi_record: timestamp of each ipi transmission stage
+- *
+- * All of these data should be initialized by mtk_ipi_device_register()
+- */
+-struct mtk_ipi_chan_table {
+-	struct rpmsg_endpoint *ept;
+-	struct mtk_rpmsg_channel_info *rpchan;
+-	struct mtk_mbox_pin_send *pin_send;
+-	struct mtk_mbox_pin_recv *pin_recv;
+-	atomic_t holder;
+-	unsigned int ipi_stage: 4,
+-		 ipi_seqno : 28;
+-	struct ipimon_s ipi_record[3];
+-	int trysend_count;
+-	int polling_count;
+-};
+-
+-/**
+- * struct mtk_ipi_device - device for represent the tinysys using mtk ipi
+- * @name: name of tinysys device
+- * @id: device id (used to match between rpmsg drivers and devices)
+- * @mrpdev: mtk rpmsg channel device
+- * @mbdev: mtk mbox device
+- * @table: channel table with endpoint & channel_info & mbox_pin info
+- * @mutex_ipi_reg: the lock must be taken when user register ipi
+- * @pre_cb: the callback handler before ipi send data
+- * @post_cb: the callback handler after ipi send data
+- * @prdata: private data for the callback use
+- * @timeout_handler: the callback for waiting reply timeout
+- * @lock_monitor: the lock for dump ipi timestamp
+- * @ipi_last_done: the last processed ipi transmission
+- * @ipi_inited: set when mtk_ipi_device_register() done
+- *
+- * Tinysys platform has necessary to define the vcalue of 'name', 'id', 'mbdev';
+- * and optional to define the 'pre_cb', 'post_cb', 'prdata', 'timeout_handler'.
+- * Othes would be initialized by mtk_ipi_device_register().
+- */
+-struct mtk_ipi_device  {
+-	const char *name;
+-	int id;
+-	struct mtk_rpmsg_device *mrpdev;
+-	struct mtk_mbox_device *mbdev;
+-	struct mtk_ipi_chan_table *table;
+-	struct mutex mutex_ipi_reg;
+-	ipi_tx_cb_t pre_cb;
+-	ipi_tx_cb_t post_cb;
+-	void *prdata;
+-	void (*timeout_handler)(int id);
+-	spinlock_t lock_monitor;
+-	int ipi_last_done;
+-	int ipi_inited;
+-};
+-
+-
+-#define IPI_ACTION_DONE		0
+-#define IPI_DEV_ILLEGAL		-1 /* ipi device is not initial */
+-#define IPI_DUPLEX			-2 /* the ipi has be registered */
+-#define IPI_UNAVAILABLE		-3 /* can't find this ipi pin define */
+-#define IPI_NO_MSGBUF		-4 /* receiver doesn't has message buffer */
+-#define IPI_NO_MEMORY		-5 /* message length is large than defined */
+-#define IPI_PIN_BUSY		-6 /* send message timeout */
+-#define IPI_COMPL_TIMEOUT	-7 /* polling or wait for ack ipi timeout */
+-#define IPI_RPMSG_ERR		-99 /* some error from rpmsg layer */
+-
+-
+-int mtk_ipi_device_register(struct mtk_ipi_device *ipidev,
+-		struct platform_device *pdev, struct mtk_mbox_device *mbox,
+-		unsigned int ipi_chan_count);
+-int mtk_ipi_device_reset(struct mtk_ipi_device *ipidev);
+-
+-int mtk_ipi_register(struct mtk_ipi_device *ipidev, int ipi_id,
+-		mbox_pin_cb_t cb, void *prdata, void *msg);
+-int mtk_ipi_unregister(struct mtk_ipi_device *ipidev, int ipi_id);
+-
+-int mtk_ipi_send(struct mtk_ipi_device *ipidev, int ipi_id,
+-		int opt, void *data, int len, int timeout);
+-int mtk_ipi_send_compl(struct mtk_ipi_device *ipidev, int ipi_id,
+-		int opt, void *data, int len, unsigned long timeout);
+-int mtk_ipi_recv(struct mtk_ipi_device *ipidev, int ipi_id);
+-int mtk_ipi_recv_reply(struct mtk_ipi_device *ipidev, int ipi_id,
+-		void *reply_data, int len);
+-
+-void ipi_monitor_dump(struct mtk_ipi_device *ipidev);
+-void mtk_ipi_tracking(struct mtk_ipi_device *ipidev, bool en);
+-
+-#endif
++/* A31 port: redirect to the 4.19 header */
++#include <linux/soc/mediatek/mtk_tinysys_ipi.h>
+diff --git a/drivers/misc/mediatek/include/mt-plat/perf_tracker.h b/drivers/misc/mediatek/include/mt-plat/perf_tracker.h
+index b03e95f5f..b6a243beb 100644
+--- a/drivers/misc/mediatek/include/mt-plat/perf_tracker.h
++++ b/drivers/misc/mediatek/include/mt-plat/perf_tracker.h
+@@ -1,35 +1,2 @@
+-/*
+- * Copyright (C) 2018 MediaTek Inc.
+- *
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License version 2 as
+- * published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+- */
+-#ifndef _PERF_TRACKER_H
+-#define _PERF_TRACKER_H
+-
+-
+-extern void perf_tracker(u64 wallclock);
+-extern int perf_tracker_enable(int val);
+-
+-#ifdef CONFIG_MTK_PERF_TRACKER
+-extern void __perf_tracker(u64 wallclock,
+-			 long mm_available,
+-			 long mm_free);
+-extern bool hit_long_check(void);
+-#ifdef CONFIG_MTK_CPU_FREQ
+-extern unsigned int mt_cpufreq_get_cur_freq(int id);
+-#else
+-static inline int mt_cpufreq_get_cur_freq(int id) { return 0; }
+-#endif
+-#else
+-static inline void __perf_tracker(u64 wallclock,
+-				long mm_available,
+-				long mm_free) {}
+-#endif /* CONFIG_MTK_PERF_TRACKER */
+-#endif /* _PERF_TRACKER_H */
++/* A31 port: redirect to the 4.19 header */
++#include "../../perf_common/perf_tracker.h"
+diff --git a/drivers/misc/mediatek/video/mt6768/videox/primary_display.h b/drivers/misc/mediatek/video/mt6768/videox/primary_display.h
+index ab3e8671c..1e8160525 100644
+--- a/drivers/misc/mediatek/video/mt6768/videox/primary_display.h
++++ b/drivers/misc/mediatek/video/mt6768/videox/primary_display.h
+@@ -26,9 +26,10 @@
+ 
+ 
+ #ifdef MTK_FB_MMDVFS_SUPPORT
+-extern struct pm_qos_request primary_display_qos_request;
+-extern struct pm_qos_request primary_display_emi_opp_request;
+-extern struct pm_qos_request primary_display_mm_freq_request;
++#include <linux/soc/mediatek/mtk-pm-qos.h>
++extern struct mtk_pm_qos_request primary_display_qos_request;
++extern struct mtk_pm_qos_request primary_display_emi_opp_request;
++extern struct mtk_pm_qos_request primary_display_mm_freq_request;
+ #endif
+ 
+ enum DISP_PRIMARY_PATH_MODE {
+diff --git a/include/linux/soc/mediatek/mtk-pm-qos.h b/include/linux/soc/mediatek/mtk-pm-qos.h
+index 1f2488089..6c684f82c 100644
+--- a/include/linux/soc/mediatek/mtk-pm-qos.h
++++ b/include/linux/soc/mediatek/mtk-pm-qos.h
+@@ -6,6 +6,11 @@
+ #ifndef _LINUX_MTK_PM_QOS_H
+ #define _LINUX_MTK_PM_QOS_H
+ 
++#include <linux/types.h>
++#include <linux/list.h>
++#include <linux/plist.h>
++#include <linux/notifier.h>
++
+ 
+ enum {
+ 	MTK_PM_QOS_RESERVED = 0,
+-- 
+2.43.0
+

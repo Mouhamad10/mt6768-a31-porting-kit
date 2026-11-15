@@ -1,0 +1,442 @@
+From efca598aa04a06dd75a8f6ea22c5385a8e967e02 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 10:02:42 +0000
+Subject: [PATCH 15/29] a31: eMMC driver 4.19 fixes (mtk pm_qos vcore, claimer
+ ctx, MTK mmc header extras)
+
+---
+ drivers/mmc/host/mediatek/ComboA/dbg.c               | 12 ++++++------
+ drivers/mmc/host/mediatek/ComboA/mt6765/autok_dvfs.c | 11 ++++++-----
+ drivers/mmc/host/mediatek/ComboA/mt6833/autok_dvfs.c | 11 ++++++-----
+ drivers/mmc/host/mediatek/ComboA/mt6853/autok_dvfs.c | 11 ++++++-----
+ drivers/mmc/host/mediatek/ComboA/mt6853/msdc_cust.c  |  5 +++--
+ drivers/mmc/host/mediatek/ComboA/mt6877/autok_dvfs.c | 11 ++++++-----
+ drivers/mmc/host/mediatek/ComboA/mt6885/autok_dvfs.c | 11 ++++++-----
+ drivers/mmc/host/mediatek/ComboA/mt6893/autok_dvfs.c | 11 ++++++-----
+ drivers/mmc/host/mediatek/ComboA/mtk_sd.h            |  3 ++-
+ drivers/mmc/host/mediatek/ComboA/sd.c                |  8 ++++----
+ include/linux/mmc/host.h                             |  3 +++
+ include/linux/mmc/mmc.h                              |  1 +
+ 12 files changed, 55 insertions(+), 43 deletions(-)
+
+diff --git a/drivers/mmc/host/mediatek/ComboA/dbg.c b/drivers/mmc/host/mediatek/ComboA/dbg.c
+index f99209975..48293e6ca 100644
+--- a/drivers/mmc/host/mediatek/ComboA/dbg.c
++++ b/drivers/mmc/host/mediatek/ComboA/dbg.c
+@@ -660,8 +660,8 @@ void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
+ 	SPREAD_PRINTF(buff, size, m,
+ 		"claimed(%d), claim_cnt(%d), claimer pid(%d), comm %s\n",
+ 		mmc->claimed, mmc->claim_cnt,
+-		mmc->claimer ? mmc->claimer->pid : 0,
+-		mmc->claimer ? mmc->claimer->comm : "NULL");
++		mmc->claimer ? (mmc->claimer->task ? task_pid_nr(mmc->claimer->task) : 0) : 0,
++		mmc->claimer ? (mmc->claimer->task ? mmc->claimer->task->comm : "NULL") : "NULL");
+ }
+ 
+ void sd_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
+@@ -706,8 +706,8 @@ void sd_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
+ 	SPREAD_PRINTF(buff, size, m,
+ 		"claimed(%d), claim_cnt(%d), claimer pid(%d), comm %s\n",
+ 		mmc->claimed, mmc->claim_cnt,
+-		mmc->claimer ? mmc->claimer->pid : 0,
+-		mmc->claimer ? mmc->claimer->comm : "NULL");
++		mmc->claimer ? (mmc->claimer->task ? task_pid_nr(mmc->claimer->task) : 0) : 0,
++		mmc->claimer ? (mmc->claimer->task ? mmc->claimer->task->comm : "NULL") : "NULL");
+ }
+ 
+ void msdc_dump_host_state(char **buff, unsigned long *size,
+@@ -882,9 +882,9 @@ void msdc_cmdq_status_print(struct msdc_host *host, struct seq_file *m)
+ 	seq_printf(m, "host claim cnt : %d\n",
+ 		mmc->claim_cnt);
+ 	seq_printf(m, "host claimer pid : %d\n",
+-		mmc->claimer ? mmc->claimer->pid : 0);
++		mmc->claimer ? (mmc->claimer->task ? task_pid_nr(mmc->claimer->task) : 0) : 0);
+ 	seq_printf(m, "host claimer comm : %s\n",
+-		mmc->claimer ? mmc->claimer->comm : "NULL");
++		mmc->claimer ? (mmc->claimer->task ? mmc->claimer->task->comm : "NULL") : "NULL");
+ 
+ 
+ #if defined(CONFIG_MTK_EMMC_HW_CQ)
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6765/autok_dvfs.c b/drivers/mmc/host/mediatek/ComboA/mt6765/autok_dvfs.c
+index c5392cdbc..4bec56d53 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6765/autok_dvfs.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6765/autok_dvfs.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <asm/segment.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/uaccess.h>
+ #include <linux/buffer_head.h>
+ #include <linux/delay.h>
+@@ -872,7 +873,7 @@ int emmc_autok(void)
+ 	 * Static variable required by vcore dvfs module, otherwise deadlock
+ 	 * happens.
+ 	 */
+-	static struct pm_qos_request autok_force;
++	static struct mtk_pm_qos_request autok_force;
+ 
+ 	if (!host || !host->mmc) {
+ 		pr_notice("eMMC device not ready\n");
+@@ -893,11 +894,11 @@ int emmc_autok(void)
+ 	base = host->base;
+ 	mmc_claim_host(host->mmc);
+ 
+-	pm_qos_add_request(&autok_force, PM_QOS_VCORE_DVFS_FORCE_OPP,
+-			PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
++	mtk_pm_qos_add_request(&autok_force, MTK_PM_QOS_VCORE_DVFS_FORCE_OPP,
++			MTK_PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
+ 
+ 	for (i = 0; i < AUTOK_VCORE_NUM; i++) {
+-		pm_qos_update_request(&autok_force, autok_opp[i]);
++		mtk_pm_qos_update_request(&autok_force, autok_opp[i]);
+ 		/* vcore = 0.51875V + 6.25mV * vcore_step2 */
+ 		vcore_step2 = pmic_get_register_value(PMIC_RG_BUCK_VCORE_VOSEL);
+ 		pr_notice("msdc fix vcore, PMIC_RG_BUCK_VCORE_VOSEL: %d\n",
+@@ -945,7 +946,7 @@ int emmc_autok(void)
+ 		host->lock_vcore = 1;
+ 	}
+ 
+-	pm_qos_remove_request(&autok_force);
++	mtk_pm_qos_remove_request(&autok_force);
+ 
+ 	mmc_release_host(host->mmc);
+ #endif
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6833/autok_dvfs.c b/drivers/mmc/host/mediatek/ComboA/mt6833/autok_dvfs.c
+index 751e7de19..4883f6e0e 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6833/autok_dvfs.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6833/autok_dvfs.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <asm/segment.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/uaccess.h>
+ #include <linux/buffer_head.h>
+ #include <linux/delay.h>
+@@ -1048,7 +1049,7 @@ int emmc_autok(void)
+ 	 * Static variable required by vcore dvfs module, otherwise deadlock
+ 	 * happens.
+ 	 */
+-	static struct pm_qos_request autok_force;
++	static struct mtk_pm_qos_request autok_force;
+ 
+ 	if (!host || !host->mmc) {
+ 		pr_notice("eMMC device not ready\n");
+@@ -1074,11 +1075,11 @@ int emmc_autok(void)
+ 		pr_notice("WARN:%s:cqe disable fail", __func__);
+ #endif
+ 
+-	pm_qos_add_request(&autok_force, PM_QOS_VCORE_DVFS_FORCE_OPP,
+-			PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
++	mtk_pm_qos_add_request(&autok_force, MTK_PM_QOS_VCORE_DVFS_FORCE_OPP,
++			MTK_PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
+ 
+ 	for (i = 0; i < AUTOK_VCORE_NUM; i++) {
+-		pm_qos_update_request(&autok_force, autok_opp[i]);
++		mtk_pm_qos_update_request(&autok_force, autok_opp[i]);
+ 		reg_vcore = devm_regulator_get_optional(mmc_dev(host->mmc),
+ 							"vcore");
+ 		vcore_step2 = regulator_get_voltage(reg_vcore);
+@@ -1126,7 +1127,7 @@ int emmc_autok(void)
+ 		host->lock_vcore = 1;
+ 	}
+ 
+-	pm_qos_remove_request(&autok_force);
++	mtk_pm_qos_remove_request(&autok_force);
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	if (emmc_autok_switch_cqe(host, 1))
+ 		pr_notice("WARN:%s:cqe enable fail", __func__);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6853/autok_dvfs.c b/drivers/mmc/host/mediatek/ComboA/mt6853/autok_dvfs.c
+index 6e0211941..9fa109448 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6853/autok_dvfs.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6853/autok_dvfs.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <asm/segment.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/uaccess.h>
+ #include <linux/buffer_head.h>
+ #include <linux/delay.h>
+@@ -1044,7 +1045,7 @@ int emmc_autok(void)
+ 	 * Static variable required by vcore dvfs module, otherwise deadlock
+ 	 * happens.
+ 	 */
+-	static struct pm_qos_request autok_force;
++	static struct mtk_pm_qos_request autok_force;
+ 
+ 	if (!host || !host->mmc) {
+ 		pr_notice("eMMC device not ready\n");
+@@ -1070,11 +1071,11 @@ int emmc_autok(void)
+ 		pr_notice("WARN:%s:cqe disable fail", __func__);
+ #endif
+ 
+-	pm_qos_add_request(&autok_force, PM_QOS_VCORE_DVFS_FORCE_OPP,
+-			PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
++	mtk_pm_qos_add_request(&autok_force, MTK_PM_QOS_VCORE_DVFS_FORCE_OPP,
++			MTK_PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
+ 
+ 	for (i = 0; i < AUTOK_VCORE_NUM; i++) {
+-		pm_qos_update_request(&autok_force, autok_opp[i]);
++		mtk_pm_qos_update_request(&autok_force, autok_opp[i]);
+ 		reg_vcore = devm_regulator_get_optional(mmc_dev(host->mmc),
+ 							"vcore");
+ 		vcore_step2 = regulator_get_voltage(reg_vcore);
+@@ -1122,7 +1123,7 @@ int emmc_autok(void)
+ 		host->lock_vcore = 1;
+ 	}
+ 
+-	pm_qos_remove_request(&autok_force);
++	mtk_pm_qos_remove_request(&autok_force);
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	if (emmc_autok_switch_cqe(host, 1))
+ 		pr_notice("WARN:%s:cqe enable fail", __func__);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6853/msdc_cust.c b/drivers/mmc/host/mediatek/ComboA/mt6853/msdc_cust.c
+index 549b2bd2c..09d6f4965 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6853/msdc_cust.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6853/msdc_cust.c
+@@ -17,6 +17,7 @@
+ #define pr_fmt(fmt) "["KBUILD_MODNAME"]" fmt
+ 
+ #include <linux/delay.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/device.h>
+ #include <linux/platform_device.h>
+ #include <linux/of.h>
+@@ -1595,8 +1596,8 @@ int msdc_of_parse(struct platform_device *pdev, struct mmc_host *mmc)
+ 		if (!host->req_vcore)
+ 			return -ENOMEM;
+ 
+-		pm_qos_add_request(host->req_vcore, PM_QOS_VCORE_OPP,
+-			PM_QOS_VCORE_OPP_DEFAULT_VALUE);
++		mtk_pm_qos_add_request(host->req_vcore, MTK_PM_QOS_VCORE_OPP,
++			MTK_PM_QOS_VCORE_OPP_DEFAULT_VALUE);
+ 	}
+ 	/* iomap register */
+ 	host->base = of_iomap(np, 0);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6877/autok_dvfs.c b/drivers/mmc/host/mediatek/ComboA/mt6877/autok_dvfs.c
+index 0d8b1760b..2314cd0eb 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6877/autok_dvfs.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6877/autok_dvfs.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <asm/segment.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/uaccess.h>
+ #include <linux/buffer_head.h>
+ #include <linux/delay.h>
+@@ -1047,7 +1048,7 @@ int emmc_autok(void)
+ 	 * Static variable required by vcore dvfs module, otherwise deadlock
+ 	 * happens.
+ 	 */
+-	static struct pm_qos_request autok_force;
++	static struct mtk_pm_qos_request autok_force;
+ 
+ 	if (!host || !host->mmc) {
+ 		pr_notice("eMMC device not ready\n");
+@@ -1073,11 +1074,11 @@ int emmc_autok(void)
+ 		pr_notice("WARN:%s:cqe disable fail", __func__);
+ #endif
+ 
+-	pm_qos_add_request(&autok_force, PM_QOS_VCORE_DVFS_FORCE_OPP,
+-			PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
++	mtk_pm_qos_add_request(&autok_force, MTK_PM_QOS_VCORE_DVFS_FORCE_OPP,
++			MTK_PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
+ 
+ 	for (i = 0; i < AUTOK_VCORE_NUM; i++) {
+-		pm_qos_update_request(&autok_force, autok_opp[i]);
++		mtk_pm_qos_update_request(&autok_force, autok_opp[i]);
+ 		reg_vcore = devm_regulator_get_optional(mmc_dev(host->mmc),
+ 							"vcore");
+ 		vcore_step2 = regulator_get_voltage(reg_vcore);
+@@ -1125,7 +1126,7 @@ int emmc_autok(void)
+ 		host->lock_vcore = 1;
+ 	}
+ 
+-	pm_qos_remove_request(&autok_force);
++	mtk_pm_qos_remove_request(&autok_force);
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	if (emmc_autok_switch_cqe(host, 1))
+ 		pr_notice("WARN:%s:cqe enable fail", __func__);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6885/autok_dvfs.c b/drivers/mmc/host/mediatek/ComboA/mt6885/autok_dvfs.c
+index a44c9d540..62f41e7fd 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6885/autok_dvfs.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6885/autok_dvfs.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <asm/segment.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/uaccess.h>
+ #include <linux/buffer_head.h>
+ #include <linux/delay.h>
+@@ -948,7 +949,7 @@ int emmc_autok(void)
+ 	 * Static variable required by vcore dvfs module, otherwise deadlock
+ 	 * happens.
+ 	 */
+-	static struct pm_qos_request autok_force;
++	static struct mtk_pm_qos_request autok_force;
+ 
+ 	if (!host || !host->mmc) {
+ 		pr_notice("eMMC device not ready\n");
+@@ -974,11 +975,11 @@ int emmc_autok(void)
+ 		pr_notice("WARN:%s:cqe disable fail", __func__);
+ #endif
+ 
+-	pm_qos_add_request(&autok_force, PM_QOS_VCORE_DVFS_FORCE_OPP,
+-			PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
++	mtk_pm_qos_add_request(&autok_force, MTK_PM_QOS_VCORE_DVFS_FORCE_OPP,
++			MTK_PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
+ 
+ 	for (i = 0; i < AUTOK_VCORE_NUM; i++) {
+-		pm_qos_update_request(&autok_force, autok_opp[i]);
++		mtk_pm_qos_update_request(&autok_force, autok_opp[i]);
+ 		reg_vcore = devm_regulator_get_optional(mmc_dev(host->mmc),
+ 							"vcore");
+ 		vcore_step2 = regulator_get_voltage(reg_vcore);
+@@ -1030,7 +1031,7 @@ int emmc_autok(void)
+ 		host->lock_vcore = 1;
+ 	}
+ 
+-	pm_qos_remove_request(&autok_force);
++	mtk_pm_qos_remove_request(&autok_force);
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	if (emmc_autok_switch_cqe(host, 1))
+ 		pr_notice("WARN:%s:cqe enable fail", __func__);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mt6893/autok_dvfs.c b/drivers/mmc/host/mediatek/ComboA/mt6893/autok_dvfs.c
+index a44c9d540..62f41e7fd 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mt6893/autok_dvfs.c
++++ b/drivers/mmc/host/mediatek/ComboA/mt6893/autok_dvfs.c
+@@ -12,6 +12,7 @@
+  */
+ 
+ #include <asm/segment.h>
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <linux/uaccess.h>
+ #include <linux/buffer_head.h>
+ #include <linux/delay.h>
+@@ -948,7 +949,7 @@ int emmc_autok(void)
+ 	 * Static variable required by vcore dvfs module, otherwise deadlock
+ 	 * happens.
+ 	 */
+-	static struct pm_qos_request autok_force;
++	static struct mtk_pm_qos_request autok_force;
+ 
+ 	if (!host || !host->mmc) {
+ 		pr_notice("eMMC device not ready\n");
+@@ -974,11 +975,11 @@ int emmc_autok(void)
+ 		pr_notice("WARN:%s:cqe disable fail", __func__);
+ #endif
+ 
+-	pm_qos_add_request(&autok_force, PM_QOS_VCORE_DVFS_FORCE_OPP,
+-			PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
++	mtk_pm_qos_add_request(&autok_force, MTK_PM_QOS_VCORE_DVFS_FORCE_OPP,
++			MTK_PM_QOS_VCORE_DVFS_FORCE_OPP_DEFAULT_VALUE);
+ 
+ 	for (i = 0; i < AUTOK_VCORE_NUM; i++) {
+-		pm_qos_update_request(&autok_force, autok_opp[i]);
++		mtk_pm_qos_update_request(&autok_force, autok_opp[i]);
+ 		reg_vcore = devm_regulator_get_optional(mmc_dev(host->mmc),
+ 							"vcore");
+ 		vcore_step2 = regulator_get_voltage(reg_vcore);
+@@ -1030,7 +1031,7 @@ int emmc_autok(void)
+ 		host->lock_vcore = 1;
+ 	}
+ 
+-	pm_qos_remove_request(&autok_force);
++	mtk_pm_qos_remove_request(&autok_force);
+ #ifdef CONFIG_MTK_EMMC_HW_CQ
+ 	if (emmc_autok_switch_cqe(host, 1))
+ 		pr_notice("WARN:%s:cqe enable fail", __func__);
+diff --git a/drivers/mmc/host/mediatek/ComboA/mtk_sd.h b/drivers/mmc/host/mediatek/ComboA/mtk_sd.h
+index 649bed412..84d31fac9 100644
+--- a/drivers/mmc/host/mediatek/ComboA/mtk_sd.h
++++ b/drivers/mmc/host/mediatek/ComboA/mtk_sd.h
+@@ -22,6 +22,7 @@
+ /* #define MTK_MSDC_BRINGUP_DEBUG */
+ #endif
+ 
++#include <linux/soc/mediatek/mtk-pm-qos.h>
+ #include <mt-plat/sync_write.h>
+ #include <linux/bitops.h>
+ #include <linux/mmc/host.h>
+@@ -424,7 +425,7 @@ struct msdc_host {
+ 	u32                     power_flash;
+ 
+ 	struct pm_qos_request   msdc_pm_qos_req; /* use for pm qos */
+-	struct pm_qos_request   *req_vcore;
++	struct mtk_pm_qos_request   *req_vcore;
+ 	int                     vcore_opp;
+ 
+ 	struct clk              *clk_ctl;
+diff --git a/drivers/mmc/host/mediatek/ComboA/sd.c b/drivers/mmc/host/mediatek/ComboA/sd.c
+index d64394596..f61f4985a 100644
+--- a/drivers/mmc/host/mediatek/ComboA/sd.c
++++ b/drivers/mmc/host/mediatek/ComboA/sd.c
+@@ -5558,7 +5558,7 @@ static int msdc_drv_remove(struct platform_device *pdev)
+ #endif
+ 	pm_qos_remove_request(&host->msdc_pm_qos_req);
+ 	if (host->vcore_opp != -1)
+-		pm_qos_remove_request(host->req_vcore);
++		mtk_pm_qos_remove_request(host->req_vcore);
+ 	pm_runtime_disable(&pdev->dev);
+ 	mmc_remove_host(host->mmc);
+ 
+@@ -5602,8 +5602,8 @@ static int msdc_runtime_suspend(struct device *dev)
+ 	pm_qos_update_request(&host->msdc_pm_qos_req,
+ 		PM_QOS_DEFAULT_VALUE);
+ 	if (host->vcore_opp != -1)
+-		pm_qos_update_request(host->req_vcore,
+-			PM_QOS_VCORE_OPP_DEFAULT_VALUE);
++		mtk_pm_qos_update_request(host->req_vcore,
++			MTK_PM_QOS_VCORE_OPP_DEFAULT_VALUE);
+ 
+ 	return 0;
+ }
+@@ -5616,7 +5616,7 @@ static int msdc_runtime_resume(struct device *dev)
+ 
+ 	pm_qos_update_request(&host->msdc_pm_qos_req, 0);
+ 	if (host->vcore_opp != -1)
+-		pm_qos_update_request(host->req_vcore, host->vcore_opp);
++		mtk_pm_qos_update_request(host->req_vcore, host->vcore_opp);
+ 
+ 	if (host->new_rx_clk_ctl)
+ 		(void)clk_prepare_enable(host->new_rx_clk_ctl);
+diff --git a/include/linux/mmc/host.h b/include/linux/mmc/host.h
+index 1ca4e1847..f9ad91912 100644
+--- a/include/linux/mmc/host.h
++++ b/include/linux/mmc/host.h
+@@ -83,6 +83,8 @@ struct mmc_ios {
+ struct mmc_host;
+ 
+ struct mmc_host_ops {
++	/* A31 port: MTK msdc hook */
++	void	(*remove_bad_sdcard)(struct mmc_host *host);
+ 	/*
+ 	 * It is optional for the host to implement pre_req and post_req in
+ 	 * order to support double buffering of requests (prepare one
+@@ -451,6 +453,7 @@ struct mmc_host {
+ #define MMC_CAP2_AVOID_3_3V	(1 << 25)	/* Host must negotiate down from 3.3V */
+ #define MMC_CAP2_CRYPTO		(1 << 27)	/* Host supports inline encryption */
+ #define MMC_CAP2_SWCQ		(1 << 30)	/* CAP_SW_CMDQ */
++#define MMC_CAP2_NMCARD		(1 << 26)	/* A31 port: MTK NM card */
+ 
+ 	int			fixed_drv_type;	/* fixed driver type for non-removable media */
+ 
+diff --git a/include/linux/mmc/mmc.h b/include/linux/mmc/mmc.h
+index d761ef660..b27346a10 100644
+--- a/include/linux/mmc/mmc.h
++++ b/include/linux/mmc/mmc.h
+@@ -53,6 +53,7 @@
+ #define MMC_READ_SINGLE_BLOCK    17   /* adtc [31:0] data addr   R1  */
+ #define MMC_READ_MULTIPLE_BLOCK  18   /* adtc [31:0] data addr   R1  */
+ #define MMC_SEND_TUNING_BLOCK    19   /* adtc                    R1  */
++#define MMC_VENDOR_CMD63         63   /* vendor command          R1  */
+ #define MMC_SEND_TUNING_BLOCK_HS200	21	/* adtc R1  */
+ 
+   /* class 3 */
+-- 
+2.43.0
+

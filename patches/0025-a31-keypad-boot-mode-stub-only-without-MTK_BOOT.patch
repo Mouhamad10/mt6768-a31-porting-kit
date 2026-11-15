@@ -1,0 +1,29 @@
+From 36819327e6d80ba57311103a439eea04d30707d5 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 12:43:07 +0000
+Subject: [PATCH 25/29] a31: keypad boot-mode stub only without MTK_BOOT
+
+---
+ drivers/input/keyboard/mediatek/mt6768/hal_kpd.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/input/keyboard/mediatek/mt6768/hal_kpd.c b/drivers/input/keyboard/mediatek/mt6768/hal_kpd.c
+index 9899d67b4..3770338eb 100644
+--- a/drivers/input/keyboard/mediatek/mt6768/hal_kpd.c
++++ b/drivers/input/keyboard/mediatek/mt6768/hal_kpd.c
+@@ -21,10 +21,12 @@ static u16 kpd_keymap_state[KPD_NUM_MEMS] = {
+ 	0xffff, 0xffff, 0xffff, 0xffff, 0x00ff
+ };
+ 
++#ifndef CONFIG_MTK_BOOT
+ unsigned int get_boot_mode(void)
+ {
+ 	return 0;
+ }
++#endif
+ 
+ static void enable_kpd(int enable)
+ {
+-- 
+2.43.0
+

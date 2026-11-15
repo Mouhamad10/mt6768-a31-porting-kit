@@ -1,0 +1,118 @@
+From 685715898cbd3b71875aff1e1018e7ded4e9c69b Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 12:35:20 +0000
+Subject: [PATCH 22/29] a31: pwrap_disable for A31 watchdog, ram_console step
+ ids, drop 4.19 hangdet (A31 wdk handles it)
+
+---
+ arch/arm64/configs/a31_4.19.fragment                  |  2 +-
+ arch/arm64/configs/a31_defconfig                      |  2 +-
+ .../misc/mediatek/include/mt-plat/mtk_ram_console.h   | 11 +++++++++++
+ drivers/soc/mediatek/mtk-pmic-wrap.c                  | 11 +++++++++++
+ drivers/watchdog/mediatek/wdk/wd_common_drv.c         |  2 +-
+ .../watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c  |  1 +
+ 6 files changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/configs/a31_4.19.fragment b/arch/arm64/configs/a31_4.19.fragment
+index 6341b6bb6..04dfe535d 100644
+--- a/arch/arm64/configs/a31_4.19.fragment
++++ b/arch/arm64/configs/a31_4.19.fragment
+@@ -1,6 +1,5 @@
+ # A31 on 4.19: platform options introduced in the MTK 4.19 tree (values from fire_defconfig)
+ CONFIG_ENERGY_MODEL=y
+-CONFIG_MTK_AEE_HANGDET=y
+ CONFIG_MTK_CM_MGR_LEGACY=y
+ CONFIG_MTK_DEVINFO=y
+ CONFIG_MTK_LEGACY_THERMAL=y
+@@ -88,3 +87,4 @@ CONFIG_MTK_RAM_CONSOLE=y
+ CONFIG_MTK_BOOT=y
+ CONFIG_MTK_BOOT_REASON=y
+ CONFIG_MTK_CHIP=y
++# CONFIG_MTK_AEE_HANGDET is not set
+diff --git a/arch/arm64/configs/a31_defconfig b/arch/arm64/configs/a31_defconfig
+index 8d034032b..d0a197bf5 100644
+--- a/arch/arm64/configs/a31_defconfig
++++ b/arch/arm64/configs/a31_defconfig
+@@ -5967,7 +5967,6 @@ CONFIG_SBITMAP=y
+ CONFIG_ALWAYS_PERMISSIVE=y
+ # A31 on 4.19: platform options introduced in the MTK 4.19 tree (values from fire_defconfig)
+ CONFIG_ENERGY_MODEL=y
+-CONFIG_MTK_AEE_HANGDET=y
+ CONFIG_MTK_CM_MGR_LEGACY=y
+ CONFIG_MTK_DEVINFO=y
+ CONFIG_MTK_LEGACY_THERMAL=y
+@@ -6054,3 +6053,4 @@ CONFIG_MTK_RAM_CONSOLE=y
+ CONFIG_MTK_BOOT=y
+ CONFIG_MTK_BOOT_REASON=y
+ CONFIG_MTK_CHIP=y
++# CONFIG_MTK_AEE_HANGDET is not set
+diff --git a/drivers/misc/mediatek/include/mt-plat/mtk_ram_console.h b/drivers/misc/mediatek/include/mt-plat/mtk_ram_console.h
+index 604579c3e..26476e700 100644
+--- a/drivers/misc/mediatek/include/mt-plat/mtk_ram_console.h
++++ b/drivers/misc/mediatek/include/mt-plat/mtk_ram_console.h
+@@ -1051,4 +1051,15 @@ static inline int ipanic_kmsg_get_next(int *count, u64 *id,
+ }
+ #endif /* CONFIG_MTK_AEE_IPANIC */
+ 
++
++/* A31 port: 4.19 mrdump step ids (same values as 4.19 mboot_params.h) */
++#define AEE_FIQ_STEP_COMMON_DIE_START 64
++#define AEE_FIQ_STEP_COMMON_DIE_LOCK 65
++#define AEE_FIQ_STEP_COMMON_DIE_KASLR 66
++#define AEE_FIQ_STEP_COMMON_DIE_SCP 67
++#define AEE_FIQ_STEP_COMMON_DIE_EMISC 68
++#define AEE_FIQ_STEP_COMMON_DIE_TRACE 69
++#define AEE_FIQ_STEP_COMMON_DIE_CS 70
++#define AEE_FIQ_STEP_COMMON_DIE_DONE 71
++
+ #endif
+diff --git a/drivers/soc/mediatek/mtk-pmic-wrap.c b/drivers/soc/mediatek/mtk-pmic-wrap.c
+index 3a0fa0694..44a60da7b 100644
+--- a/drivers/soc/mediatek/mtk-pmic-wrap.c
++++ b/drivers/soc/mediatek/mtk-pmic-wrap.c
+@@ -3322,6 +3322,17 @@ static struct platform_driver pwrap_drv = {
+ 
+ module_platform_driver(pwrap_drv);
+ 
++
++/* A31 port: used by the A31 watchdog before a SW reset */
++void pwrap_disable(void)
++{
++	if (!wrp)
++		return;
++	pwrap_writel(wrp, 0, PWRAP_WRAP_EN);
++	udelay(10);
++}
++EXPORT_SYMBOL(pwrap_disable);
++
+ MODULE_AUTHOR("Flora Fu, MediaTek");
+ MODULE_DESCRIPTION("MediaTek PMIC Wrapper Driver");
+ MODULE_LICENSE("GPL v2");
+diff --git a/drivers/watchdog/mediatek/wdk/wd_common_drv.c b/drivers/watchdog/mediatek/wdk/wd_common_drv.c
+index b8b48f2a3..34502563c 100644
+--- a/drivers/watchdog/mediatek/wdk/wd_common_drv.c
++++ b/drivers/watchdog/mediatek/wdk/wd_common_drv.c
+@@ -393,7 +393,7 @@ void dump_wdk_bind_info(void)
+ 	aee_sram_fiq_log("\n");
+ #endif
+ 	mtk_timer_clkevt_aee_dump();
+-	tick_broadcast_mtk_aee_dump();
++	/* A31 port: no tick_broadcast_mtk_aee_dump() in 4.19 */
+ 	timer_list_aee_dump(kick_bit);
+ }
+ 
+diff --git a/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c b/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c
+index af337d36e..fd479fe34 100644
+--- a/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c
++++ b/drivers/watchdog/mediatek/wdt/common/wdt_v2/mtk_wdt_v2.c
+@@ -98,6 +98,7 @@ __weak void dfd_workaround(void) {};
+ 
+ #ifdef CONFIG_KICK_SPM_WDT
+ #include <mach/mt_spm.h>
++extern void pwrap_disable(void);
+ static void spm_wdt_init(void);
+ #endif
+ 
+-- 
+2.43.0
+

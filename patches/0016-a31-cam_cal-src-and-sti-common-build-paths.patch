@@ -1,0 +1,40 @@
+From 5ee9e585a5d7703d0f6af833418e75fef4a75014 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 10:04:16 +0000
+Subject: [PATCH 16/29] a31: cam_cal/src and sti/common build paths
+
+---
+ drivers/Makefile               | 3 ++-
+ drivers/misc/mediatek/Makefile | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/Makefile b/drivers/Makefile
+index c54f59adb..e4c61edd9 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -203,7 +203,8 @@ obj-y += usb/typec/slsi/common/
+ obj-y += vibrator/common/
+ obj-y += security/samsung/five_tee_driver/
+ obj-y += sti/abc/
+-obj-y += sti/common/
++# A31: sti/common has only Kconfig
++#obj-y += sti/common/
+ obj-y += security/samsung/tzic/
+ obj-y += muic/common/
+ obj-y += fingerprint/
+diff --git a/drivers/misc/mediatek/Makefile b/drivers/misc/mediatek/Makefile
+index 75368840a..77567de9c 100644
+--- a/drivers/misc/mediatek/Makefile
++++ b/drivers/misc/mediatek/Makefile
+@@ -153,7 +153,7 @@ obj-$(CONFIG_MTK_V4L2_LENS) += lens/
+ else
+ obj-$(CONFIG_MTK_LENS)      += lens/
+ endif
+-obj-$(CONFIG_MTK_CAM_CAL)   += cam_cal/
++obj-$(CONFIG_MTK_CAM_CAL)   += cam_cal/src/
+ obj-$(CONFIG_NFC_CHIP_SUPPORT) += nfc/
+ obj-$(CONFIG_MTK_M4U) += m4u/
+ obj-$(CONFIG_MTK_PSEUDO_M4U)   += pseudo_m4u/
+-- 
+2.43.0
+

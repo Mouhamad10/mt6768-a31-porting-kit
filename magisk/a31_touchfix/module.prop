@@ -1,0 +1,6 @@
+id=a31_touchfix
+name=A31 touch watchdog (IST4050)
+version=3.0
+versionCode=3
+author=Mouhamad10
+description=Re-enables the Imagis IST4050 touch that One UI leaves disabled on screen-off. Judges screen-on by power-manager wakefulness. Log: /data/local/tmp/a31_touchfix.log

@@ -1,0 +1,77 @@
+From 1b5c71c342b63404a1560667f809ce3a08ac3539 Mon Sep 17 00:00:00 2001
+From: a31port <a31port@local>
+Date: Fri, 13 Nov 2026 14:12:29 +0000
+Subject: [PATCH 28/29] a31: sec_log mirrored via console so the old kernel
+ shows /proc/last_kmsg after a crash
+
+---
+ drivers/samsung/misc/Makefile  |  2 +-
+ drivers/samsung/misc/sec_log.c | 17 ++++++++++++++++-
+ fs/pstore/ram_core.c           |  3 ++-
+ 3 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/samsung/misc/Makefile b/drivers/samsung/misc/Makefile
+index 966d11751..bde3cd3a0 100644
+--- a/drivers/samsung/misc/Makefile
++++ b/drivers/samsung/misc/Makefile
+@@ -6,7 +6,7 @@
+ # Licensed under GPLv2
+ 
+ # Samsung Logging Feature
+-#obj-$(CONFIG_SEC_EXT)			+= sec_log.o
++obj-$(CONFIG_SEC_EXT)			+= sec_log.o
+ # Samsung Bootstat Feature
+ obj-$(CONFIG_SEC_BOOTSTAT)		+= sec_bootstat.o
+ # Samsung NAD Feature
+diff --git a/drivers/samsung/misc/sec_log.c b/drivers/samsung/misc/sec_log.c
+index 1699e01da..fb816b403 100644
+--- a/drivers/samsung/misc/sec_log.c
++++ b/drivers/samsung/misc/sec_log.c
+@@ -206,6 +206,21 @@ void register_hook_logger(void (*func)(const char *buf, size_t size))
+ }
+ EXPORT_SYMBOL(register_hook_logger);
+ 
++
++/* A31 port: 4.19 has no Samsung printk text hook; mirror the log through a console */
++static void sec_log_console_write(struct console *con, const char *s, unsigned int count)
++{
++	if (sec_log_buf)
++		emit_sec_log((char *)s, count);
++}
++
++static struct console sec_log_console = {
++	.name	= "sec_log",
++	.write	= sec_log_console_write,
++	.flags	= CON_PRINTBUFFER | CON_ENABLED | CON_ANYTIME,
++	.index	= -1,
++};
++
+ static int __init sec_log_buf_init(void)
+ {
+ 	unsigned int *sec_log_mag;
+@@ -230,7 +245,7 @@ static int __init sec_log_buf_init(void)
+ 
+ 	//register_console(&sec_console);
+ 	//unregister_console(&sec_console);
+-	register_log_text_hook(emit_sec_log);
++	register_console(&sec_log_console);
+ 
+ 	return 0;
+ }
+diff --git a/fs/pstore/ram_core.c b/fs/pstore/ram_core.c
+index a6e502246..085d8e910 100644
+--- a/fs/pstore/ram_core.c
++++ b/fs/pstore/ram_core.c
+@@ -397,7 +397,8 @@ void persistent_ram_zap(struct persistent_ram_zone *prz)
+ 	persistent_ram_update_header_ecc(prz);
+ }
+ 
+-static void *persistent_ram_vmap(phys_addr_t start, size_t size,
++/* A31 port: exported for Samsung sec_log */
++void *persistent_ram_vmap(phys_addr_t start, size_t size,
+ 		unsigned int memtype)
+ {
+ 	struct page **pages;
+-- 
+2.43.0
+
