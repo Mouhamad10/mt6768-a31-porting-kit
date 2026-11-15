@@ -1,0 +1,62 @@
+name: Triage a boot log (A31 / MT6768)
+
+# Manual run: Actions -> "Triage a boot log (A31 / MT6768)" -> Run workflow.
+# Give it a URL to a kernel log (or the path of one committed in this repo). It scans the log
+# against tools/boot-signatures.json and produces a Markdown triage report: which KNOWN faults
+# fired, what each means, and where the documented fix is. It handles binary ramoops/pmsg dumps
+# (string extraction). It is a deterministic matcher - it names known faults and their fixes; for
+# an unknown fatal fault it says so and points you at how to analyse it. It does NOT invent patches.
+
+on:
+  workflow_dispatch:
+    inputs:
+      log_url:
+        description: "Direct URL to a kernel log (text, or a binary ramoops/pmsg dump). Leave blank to use repo_path."
+        required: false
+        default: ""
+      repo_path:
+        description: "Instead of a URL, a path to a log committed in this repo (e.g. logs/boot.txt)."
+        required: false
+        default: ""
+      label:
+        description: "Short name for the report"
+        required: false
+        default: "bootlog"
+
+jobs:
+  triage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the log
+        run: |
+          set -e
+          mkdir -p work
+          URL="${{ github.event.inputs.log_url }}"
+          RP="${{ github.event.inputs.repo_path }}"
+          if [ -n "$URL" ]; then
+            echo "Downloading: $URL"
+            wget --no-verbose -O work/input.log "$URL"
+          elif [ -n "$RP" ]; then
+            echo "Using committed file: $RP"
+            cp "$RP" work/input.log
+          else
+            echo "::error::Provide either log_url or repo_path."
+            exit 1
+          fi
+          ls -lh work/input.log
+          # Show whether it is binary (NUL bytes) - the triage script decodes it either way.
+          if grep -qaP '\x00' work/input.log; then echo "note: binary log (ramoops/pmsg) - will be string-decoded"; fi
+
+      - name: Run triage
+        run: |
+          python3 -I tools/triage-bootlog.py work/input.log \
+            --sigs tools/boot-signatures.json \
+            --md "triage-${{ github.event.inputs.label }}.md"
+
+      - name: Upload triage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: a31-boot-triage-${{ github.event.inputs.label }}
+          path: triage-*.md

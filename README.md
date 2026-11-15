@@ -49,3 +49,11 @@ This kit holds the **patches and documentation**, not gigabytes of upstream sour
 
 Kernel patches are GPL-2.0 (they derive from the Linux kernel). Scripts and documentation in this
 repo are provided as-is for the porting community.
+
+## Boot-log triage
+
+Feed a kernel log (text or a binary ramoops/pmsg dump) to
+[`tools/triage-bootlog.py`](tools/triage-bootlog.py) — or the
+**"Triage a boot log"** GitHub Action — and it matches the log against a database of known
+signatures and tells you which fault fired and where its fix is documented. See
+[`bring-up/boot-log-signatures.md`](bring-up/boot-log-signatures.md).

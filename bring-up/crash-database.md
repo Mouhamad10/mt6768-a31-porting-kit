@@ -104,3 +104,47 @@ kernel, and match the faulting function against the source. Most of these were f
 driver source **before** the next boot, predicting the next crash, and fixing a whole class at once
 (all `nvmem`/efuse probes, all missing-DT-node lookups) rather than one crash per reboot — which is
 the only way to make progress when every test needs a physical reboot.
+
+---
+
+## Appendix: signatures seen on the already-booting kernel
+
+These are not 4.19 bring-up crashes — they are things seen in a `ramoops`/`last_kmsg` dump from the
+**current, booting** kernel. They are recorded here (and in
+[`tools/boot-signatures.json`](../tools/boot-signatures.json)) so the triage tool reads them
+correctly instead of raising a false alarm. See [`boot-log-signatures.md`](boot-log-signatures.md).
+
+### A. Deliberate forced reset — **not a crash**
+
+**Signature:**
+```
+Hard Reset
+kernel BUG at drivers/samsung/sec_hard_reset_hook.c:131!
+pc : hard_reset_hook_callback+0x88/0x90
+ ... __hrtimer_run_queues ...
+```
+
+**Cause:** this is Samsung's forced-upload/ramdump hook. Holding **Volume-Down + Power** long enough
+makes a timer fire a deliberate `BUG()` so the RAM log can be captured. It is **user-triggered**, not
+a spontaneous fault. A ramdump whose only `BUG()` is this one means the kernel booted fine and you
+forced the reset — the surrounding log (here: APEX activated, services up at ~8 s) confirms a healthy
+boot. The triage tool suppresses the generic "Oops" on the same line so it does not look like a real
+crash. To capture a *spontaneous* crash, do not hold the keys.
+
+### B. eBPF program load failure — old kernel vs new Android
+
+**Signature:**
+```
+NetBpfLoad: libbpf: prog '...': failed to load: -13
+NetBpfLoad: === CRITICAL FAILURE LOADING BPF PROGRAMS ===
+NetBpfLoad: --- DO NOT EXPECT SYSTEM TO BOOT SUCCESSFULLY ---
+```
+
+**Cause:** Android's `netbpfload` tries to load mainline `netd` eBPF programs that the older kernel's
+BPF verifier / BTF support rejects (`-13` = EPERM / verifier reject). Despite the wording, boot
+**does** continue — but per-UID network stats, tethering and some firewall paths are degraded.
+
+**What to check:** `CONFIG_BPF`, `CONFIG_BPF_SYSCALL`, `CONFIG_DEBUG_INFO_BTF`, `CONFIG_CGROUP_BPF`
+and the net BPF hooks. On a 4.x kernel some newer programs simply cannot load — that is a
+kernel-version gap, not a patchable driver bug. It is the clearest reason to move to a newer kernel
+base (5.10 GKI) for a modern Android userspace, rather than something to patch on 4.x.

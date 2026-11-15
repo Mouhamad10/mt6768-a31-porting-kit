@@ -1,0 +1,96 @@
+{
+  "_comment": "Boot-log signature database for the MT6768 / A31 porting kit. triage-bootlog.py scans a kernel log against these. A signature matches when its regex is found. 'severity': fatal = boot-blocking; intentional = deliberate, not a bug; warning = non-fatal but real; info = harmless noise. 'fix' points to where the real fix is documented (a crash-database section or a patch) - the triage NEVER invents a patch; for an unknown fatal it only flags that a human/AI must read the trace. Add new signatures here as you find them.",
+  "signatures": [
+    {
+      "id": "sec-hard-reset",
+      "name": "Deliberate forced reset (not a crash)",
+      "regex": "sec_hard_reset_hook\\.c|hard_reset_hook_callback",
+      "severity": "intentional",
+      "meaning": "Samsung's forced-upload/ramdump hook fired because Volume-Down + Power were held. This is a user-triggered hard reset, NOT a kernel bug. If this is the only BUG() in the log, the kernel did not crash on its own.",
+      "fix": null,
+      "action": "Ignore. If you were hunting a boot crash, re-capture WITHOUT holding the keys - this event is you forcing the reset."
+    },
+    {
+      "id": "gpufreq-efuse",
+      "name": "gpufreq NULL deref reading the GPU efuse",
+      "regex": "cannot get efuse_segment_cell|__mt_gpufreq_init_efuse|__mt_gpufreq_pdrv_probe",
+      "severity": "fatal",
+      "meaning": "MTK gpufreq called nvmem_cell_get('efuse_segment_cell') but the A31 DT has no such nvmem cell, then dereferenced the ERR_PTR. Dies ~1.0s.",
+      "fix": "bring-up/crash-database.md#1-gpufreq",
+      "action": "Apply the get_devinfo_with_index(30) & 0xFF fallback. Every MTK driver reading an efuse via nvmem on this device needs the same fallback."
+    },
+    {
+      "id": "eint-node",
+      "name": "EINT controller not found (no GPIO interrupts)",
+      "regex": "Failed to add EINT|mtk_eint_set_debounce|mtk_build_eint",
+      "severity": "fatal",
+      "meaning": "mtk_build_eint() looked up the EINT controller by node name 'eint' but on the A31 it is named apirq@1000b000, so hw->eint stays NULL and the first driver to request a GPIO IRQ dies. Without EINT nothing with a GPIO interrupt works (touch, buttons, sensors, SIM/USB detect).",
+      "fix": "bring-up/crash-database.md#2-pinctrl-eint",
+      "action": "Resolve the EINT base through the reg_base_eint phandle first, then fall back to of_find_node_by_name(NULL, 'eint')."
+    },
+    {
+      "id": "thermal-sysrst",
+      "name": "thermal sysrst cooler BUG() on a bogus trip",
+      "regex": "mtk_cooler_sysrst\\.c|sysrst_buck_set_cur_state|sysrst_tsap_set_cur_state",
+      "severity": "fatal",
+      "meaning": "The mtktsAP-sysrst cooler calls BUG() as a 'thermal protection reset' when its zone crosses a trip at init. The AP NTC (BTS, thermistor-ch*) is mis-mapped/mis-calibrated on this port, reports an impossible temperature, the trip fires immediately, and the SoC reboots. Dies ~1.1s.",
+      "fix": "bring-up/crash-database.md#3-thermal-sysrst",
+      "action": "Not yet fixed in-tree. Either correct the io-channels/thermistor-ch* auxadc mapping for the A31, or make set_cur_state log-and-return instead of BUG() on a clearly bogus init-time trip."
+    },
+    {
+      "id": "netbpf-load-fail",
+      "name": "eBPF program load failure (old kernel vs new Android)",
+      "regex": "CRITICAL FAILURE LOADING BPF PROGRAMS|NetBpfLoad: .*failed to load: -|libbpf: failed to load object",
+      "severity": "warning",
+      "meaning": "Android's netbpfload could not load a mainline netd eBPF program (commonly -13 EPERM / verifier reject). The old kernel's BPF verifier/BTF support is behind what the newer Android userspace ships. Boot usually CONTINUES, but per-UID network stats, tethering and some firewall features are degraded.",
+      "fix": null,
+      "action": "Confirm CONFIG_BPF, CONFIG_BPF_SYSCALL, CONFIG_DEBUG_INFO_BTF, CONFIG_CGROUP_BPF and net BPF hooks are set. On a 4.x kernel some newer programs simply cannot load - that is a kernel-version gap, not a patch. It is not boot-fatal despite the scary 'DO NOT EXPECT SYSTEM TO BOOT' message."
+    },
+    {
+      "id": "tee-mmu-warn",
+      "name": "Trustonic TEE tee_mmu_create WARNING (non-fatal)",
+      "regex": "MobiCoreDriver/mmu\\.c|tee_mmu_create\\+",
+      "severity": "warning",
+      "meaning": "The Trustonic (Kinibi) TEE driver warned while building an MMU table for a world-shared buffer (non-contiguous / wrong GFP). It is a WARN, not an Oops - the TEE session still opens.",
+      "fix": "patches/0003-a31-Trustonic-TEE-410-A31-gfp-serialisation-mt6768-T.patch",
+      "action": "Related to the TEE 410 gfp/serialisation patch. Safe to ignore for boot; tighten only if keymaster/vaultkeeper actually fail."
+    },
+    {
+      "id": "rpmb-counter-mismatch",
+      "name": "RPMB write-counter mismatch (keymaster/vaultkeeper)",
+      "regex": "write data write counter mismatch error|TEE_RpmbReadDatabyOffset|RpmbOpenSession",
+      "severity": "warning",
+      "meaning": "The TEE's RPMB replay-protected block read saw a write-counter mismatch and retried. Usually a transient at first boot after an RPMB/userdata change; keymaster recovers. Persistent mismatches can mean the RPMB key is not provisioned for this ROM.",
+      "fix": null,
+      "action": "Ignore if boot continues and keystore works. If it loops, the RPMB key state does not match the ROM - a vendor/keymaster concern, not a kernel patch."
+    },
+    {
+      "id": "perfmon-cap",
+      "name": "capability 'PERFMON' not supported by the kernel",
+      "regex": "capability 'PERFMON' not supported by the kernel",
+      "severity": "info",
+      "meaning": "An APEX init.rc asked for the PERFMON capability, which this older kernel does not define. Harmless - init just skips it.",
+      "fix": null,
+      "action": "No action. Cosmetic on a pre-5.8 kernel."
+    },
+    {
+      "id": "exfat-sdfat-mount",
+      "name": "exFAT / sdfat SD-card mount issue",
+      "regex": "sdfat|exfat|texfat|Opt_defrag|time_offset",
+      "severity": "warning",
+      "meaning": "SD-card exFAT mount path. On this device sdfat mis-parsed time_offset for exFAT.",
+      "fix": "bring-up/sdfat-exfat-fix.md",
+      "action": "See the 1-byte sdfat Image patch that repoints the time_offset token."
+    },
+    {
+      "id": "generic-panic",
+      "name": "Kernel panic - not syncing",
+      "regex": "Kernel panic - not syncing|Unable to handle kernel (NULL pointer|paging request)|Internal error: Oops",
+      "severity": "fatal",
+      "fallback": true,
+      "meaning": "A genuine fatal fault (only counts if NOT already explained by a more specific signature above, e.g. the deliberate forced reset).",
+      "fix": null,
+      "action": "Read the pc:/lr: and Call trace lines, match the faulting function to the driver source (unpack Image via tools/a31_bootimg.py + gunzip), and add a new signature here with the fix once known. The triage will not invent a patch for an unknown fault - this is the point where a human or an AI reads the trace."
+    }
+  ]
+}
