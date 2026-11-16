@@ -19,10 +19,10 @@ on:
         description: "Artifact to mirror"
         default: "a31-ported-gsi"
       hosts:
-        description: "Where to upload: oshi | gofile | both"
-        default: "both"
+        description: "Where to upload: gofile | oshi | both  (oshi.at caps ~<4GB, use for smaller images)"
+        default: "gofile"
       expire_minutes:
-        description: "Hard expiry on oshi.at in minutes (1440 = 24h)"
+        description: "Hard expiry on oshi.at in minutes (1440 = 24h); ignored by GoFile"
         default: "1440"
 
 jobs:
