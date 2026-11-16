@@ -1,0 +1,109 @@
+name: Mirror ported GSI to external hosts
+
+# Manual run: Actions -> "Mirror ported GSI to external hosts" -> Run workflow.
+# Takes a FINISHED "Port GSI for A31" run, grabs its artifact, rejoins the split image,
+# and re-uploads it to anonymous file hosts so people who can't use GitHub (banned /
+# rate-limited) get a plain direct link - no login needed.
+#
+# These hosts keep a file while it is being downloaded and drop it after a stretch of
+# no downloads (roughly a day or so of inactivity on PixelDrain), so the link is NOT
+# permanent - it survives as long as people keep pulling it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ID of a finished 'Port GSI for A31' job (the number in its URL)"
+        required: true
+      artifact_name:
+        description: "Artifact to mirror"
+        default: "a31-ported-gsi"
+      hosts:
+        description: "Where to upload: pixeldrain | gofile | both"
+        default: "both"
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost /opt/az 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h / | tail -1
+
+      - name: Download the ported artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.inputs.artifact_name }}
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: dist
+
+      - name: Rejoin the split image
+        run: |
+          set -e
+          cd dist
+          ls -lh
+          # find the split set (system-a31-*.img.part.00/.01/...)
+          BASE=$(ls *.img.part.00 2>/dev/null | head -1 | sed 's/\.part\.00$//')
+          if [ -z "$BASE" ]; then
+            # maybe a single-part file already
+            BASE=$(ls *.img 2>/dev/null | head -1)
+            [ -n "$BASE" ] && cp "$BASE" ../system.img
+          else
+            echo "rejoining parts of: $BASE"
+            cat ${BASE}.part.* > ../system.img
+          fi
+          cd ..
+          [ -s system.img ] || { echo "::error::no image found inside the artifact"; exit 1; }
+          echo "rejoined: $(ls -lh system.img | awk '{print $5}')  type: $(file -b system.img)"
+          sha256sum system.img | tee system.img.sha256
+
+      - name: Upload to external hosts
+        run: |
+          set +e
+          HOSTS="${{ github.event.inputs.hosts }}"
+          F=system.img
+          SZ=$(ls -lh "$F" | awk '{print $5}')
+          PD=""; GF=""
+
+          if [ "$HOSTS" = "pixeldrain" ] || [ "$HOSTS" = "both" ]; then
+            echo ">> uploading to PixelDrain ..."
+            R=$(curl -s --retry 3 --retry-delay 5 -T "$F" "https://pixeldrain.com/api/file/$F")
+            echo "pixeldrain raw: $R"
+            ID=$(echo "$R" | grep -oE '"id"[: ]*"[^"]+"' | head -1 | grep -oE '[A-Za-z0-9]+' | tail -1)
+            [ -n "$ID" ] && PD="https://pixeldrain.com/u/$ID"
+          fi
+
+          if [ "$HOSTS" = "gofile" ] || [ "$HOSTS" = "both" ]; then
+            echo ">> uploading to GoFile ..."
+            SRV=$(curl -s https://api.gofile.io/servers | grep -oE '"name":"[a-z0-9-]+"' | head -1 | cut -d'"' -f4)
+            [ -z "$SRV" ] && SRV=store1
+            echo "gofile server: $SRV"
+            R=$(curl -s --retry 3 --retry-delay 5 -F "file=@$F" "https://${SRV}.gofile.io/contents/uploadfile")
+            echo "gofile raw: $R"
+            GF=$(echo "$R" | grep -oE '"downloadPage":"[^"]+"' | head -1 | cut -d'"' -f4)
+          fi
+
+          SHA=$(cut -d' ' -f1 system.img.sha256)
+          {
+            echo "## Mirror links  (size: $SZ)"
+            echo ""
+            echo "Rejoined image mirrored from run \`${{ github.event.inputs.run_id }}\`."
+            echo ""
+            [ -n "$PD" ] && echo "- **PixelDrain:** $PD" || echo "- PixelDrain: (upload failed - see log)"
+            [ -n "$GF" ] && echo "- **GoFile:** $GF" || echo "- GoFile: (upload failed or skipped)"
+            echo ""
+            echo "SHA256: \`$SHA\`"
+            echo ""
+            echo "> These are anonymous hosts: the file stays while people download it and is dropped after a stretch with no downloads (not permanent). No login needed to grab it."
+            echo ""
+            echo "After downloading, flash it directly (it is the full, already-rejoined \`system.img\`):"
+            echo "fastbootd -> disable vbmeta -> \`fastboot flash system system.img\` -> wipe data."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # also fail loudly if BOTH failed
+          if [ -z "$PD" ] && [ -z "$GF" ]; then echo "::error::all uploads failed"; exit 1; fi
+          echo "PD=$PD"; echo "GF=$GF"
