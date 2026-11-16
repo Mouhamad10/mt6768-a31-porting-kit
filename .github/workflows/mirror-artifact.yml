@@ -5,9 +5,9 @@ name: Mirror ported GSI to external hosts
 # and re-uploads it to anonymous file hosts so people who can't use GitHub (banned /
 # rate-limited) get a plain direct link - no login needed.
 #
-# These hosts keep a file while it is being downloaded and drop it after a stretch of
-# no downloads (roughly a day or so of inactivity on PixelDrain), so the link is NOT
-# permanent - it survives as long as people keep pulling it.
+# oshi.at auto-deletes the file at a hard expiry you pass (default 24h). GoFile keeps it
+# while it is being downloaded and drops it after a stretch of no downloads. Neither link
+# is permanent - exactly what was wanted: live for a day-ish, then gone, no login.
 
 on:
   workflow_dispatch:
@@ -19,8 +19,11 @@ on:
         description: "Artifact to mirror"
         default: "a31-ported-gsi"
       hosts:
-        description: "Where to upload: pixeldrain | gofile | both"
+        description: "Where to upload: oshi | gofile | both"
         default: "both"
+      expire_minutes:
+        description: "Hard expiry on oshi.at in minutes (1440 = 24h)"
+        default: "1440"
 
 jobs:
   mirror:
@@ -65,16 +68,16 @@ jobs:
         run: |
           set +e
           HOSTS="${{ github.event.inputs.hosts }}"
+          EXP="${{ github.event.inputs.expire_minutes }}"
           F=system.img
           SZ=$(ls -lh "$F" | awk '{print $5}')
-          PD=""; GF=""
+          OS=""; GF=""
 
-          if [ "$HOSTS" = "pixeldrain" ] || [ "$HOSTS" = "both" ]; then
-            echo ">> uploading to PixelDrain ..."
-            R=$(curl -s --retry 3 --retry-delay 5 -T "$F" "https://pixeldrain.com/api/file/$F")
-            echo "pixeldrain raw: $R"
-            ID=$(echo "$R" | grep -oE '"id"[: ]*"[^"]+"' | head -1 | grep -oE '[A-Za-z0-9]+' | tail -1)
-            [ -n "$ID" ] && PD="https://pixeldrain.com/u/$ID"
+          if [ "$HOSTS" = "oshi" ] || [ "$HOSTS" = "both" ]; then
+            echo ">> uploading to oshi.at (expire ${EXP}min) ..."
+            R=$(curl -s --retry 3 --retry-delay 5 -T "$F" "https://oshi.at/?expire=${EXP}")
+            echo "oshi raw: $R"
+            OS=$(echo "$R" | grep -oE 'https://oshi\.at/[A-Za-z0-9]+/[^ ]+' | tail -1)
           fi
 
           if [ "$HOSTS" = "gofile" ] || [ "$HOSTS" = "both" ]; then
@@ -93,17 +96,17 @@ jobs:
             echo ""
             echo "Rejoined image mirrored from run \`${{ github.event.inputs.run_id }}\`."
             echo ""
-            [ -n "$PD" ] && echo "- **PixelDrain:** $PD" || echo "- PixelDrain: (upload failed - see log)"
+            [ -n "$OS" ] && echo "- **oshi.at (hard expiry ${EXP}min):** $OS" || echo "- oshi.at: (upload failed - see log)"
             [ -n "$GF" ] && echo "- **GoFile:** $GF" || echo "- GoFile: (upload failed or skipped)"
             echo ""
             echo "SHA256: \`$SHA\`"
             echo ""
-            echo "> These are anonymous hosts: the file stays while people download it and is dropped after a stretch with no downloads (not permanent). No login needed to grab it."
+            echo "> Anonymous hosts, no login needed. oshi.at auto-deletes at the hard expiry above (1440 min = 24h). GoFile stays while it is being downloaded and is dropped after a stretch of no downloads. Neither is permanent."
             echo ""
             echo "After downloading, flash it directly (it is the full, already-rejoined \`system.img\`):"
             echo "fastbootd -> disable vbmeta -> \`fastboot flash system system.img\` -> wipe data."
           } >> "$GITHUB_STEP_SUMMARY"
 
           # also fail loudly if BOTH failed
-          if [ -z "$PD" ] && [ -z "$GF" ]; then echo "::error::all uploads failed"; exit 1; fi
-          echo "PD=$PD"; echo "GF=$GF"
+          if [ -z "$OS" ] && [ -z "$GF" ]; then echo "::error::all uploads failed"; exit 1; fi
+          echo "OS=$OS"; echo "GF=$GF"
