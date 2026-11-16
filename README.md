@@ -57,3 +57,7 @@ Feed a kernel log (text or a binary ramoops/pmsg dump) to
 **"Triage a boot log"** GitHub Action — and it matches the log against a database of known
 signatures and tells you which fault fired and where its fix is documented. See
 [`bring-up/boot-log-signatures.md`](bring-up/boot-log-signatures.md).
+
+## Getting started
+
+New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the repo is, every feature, and exactly how to run the three GitHub Actions.

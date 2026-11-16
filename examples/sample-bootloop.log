@@ -1,0 +1,14 @@
+[    0.000000] Booting Linux on physical CPU 0x0
+[    1.002000] Machine model: MT6768V/CA
+[    6.500000] init: init second stage started!
+[    7.533000] apexd: Marking APEXd as activated
+[    7.800000] NetBpfLoad: libbpf: prog 'schedcls_tether_downstream6_ether': failed to load
+[    7.800500] NetBpfLoad: === CRITICAL FAILURE LOADING BPF PROGRAMS ===
+[    7.801000] NetBpfLoad: --- DO NOT EXPECT SYSTEM TO BOOT SUCCESSFULLY ---
+[   28.822000] init: Service bpfloader (pid 998) exited with status 38 waiting took 20.035000 seconds
+[   28.822200] init: Service bpfloader has 'reboot_on_failure' option and failed, shutting down system.
+[   28.822700] init: Got shutdown_command 'reboot,bpfloader-failed' Calling HandlePowerctlMessage()
+[   28.823300] init: ####Reboot start, reason: reboot,bpfloader-failed, reboot_target: bpfloader-failed
+[   32.086800] init: Service vold has 'reboot_on_failure' option and failed, shutting down system.
+[   33.545600] reboot: Restarting system with command 'bpfloader-failed'
+[   33.545700] sec_reboot (0, bpfloader-failed)
