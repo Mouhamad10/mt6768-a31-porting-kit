@@ -25,6 +25,9 @@ on:
       output_format:
         description: "Shrink format: 'erofs' (smallest) or 'ext4' (resize2fs -M)"
         default: "erofs"
+      mirror:
+        description: "Also upload a direct download link to GoFile (anonymous, no login)? true/false"
+        default: "true"
 
 jobs:
   port:
@@ -174,6 +177,36 @@ jobs:
             echo ""
             echo "Download the **a31-ported-gsi** artifact, rejoin per HOW-TO-REJOIN.txt, then flash per README.md."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mirror a direct link (GoFile)
+        if: ${{ github.event.inputs.mirror == 'true' }}
+        run: |
+          set +e
+          cd work
+          OUT="$(cat outname.txt)"
+          F="$OUT.img"
+          [ -s "$F" ] || { echo "no full image to mirror"; exit 0; }
+          SZ=$(ls -lh "$F" | awk '{print $5}')
+          SHA=$(sha256sum "$F" | cut -d' ' -f1)
+          echo ">> uploading $F ($SZ) to GoFile ..."
+          SRV=$(curl -s https://api.gofile.io/servers | grep -oE '"name":"[a-z0-9-]+"' | head -1 | cut -d'"' -f4)
+          [ -z "$SRV" ] && SRV=store1
+          R=$(curl -s --retry 3 --retry-delay 5 -F "file=@$F" "https://${SRV}.gofile.io/contents/uploadfile")
+          GF=$(echo "$R" | grep -oE '"downloadPage":"[^"]+"' | head -1 | cut -d'"' -f4)
+          {
+            echo ""
+            echo "### Direct download (no GitHub needed)"
+            if [ -n "$GF" ]; then
+              echo "- **GoFile:** $GF"
+              echo "  - this is the full, already-rejoined \`system.img\` ($SZ) - flash it as-is."
+            else
+              echo "- GoFile upload failed (see log). The split artifact above still works."
+            fi
+            echo ""
+            echo "SHA256: \`$SHA\`"
+            echo "> Anonymous host, no login. GoFile keeps the file while people download it and drops it after a stretch of no downloads - not permanent."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "GF=$GF"
 
       - name: Upload ported GSI + kit
         uses: actions/upload-artifact@v4
