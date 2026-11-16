@@ -1,15 +1,16 @@
 name: Port GSI for A31 (SM-A315F)
 
 # Manual run: Actions -> "Port GSI for A31 (SM-A315F)" -> Run workflow, paste a GSI URL.
-# Deterministic half: download the GSI, normalise it (decompress, sparse->raw, validate the fs),
-# and build an A31 flashing kit (fastbootd/recovery steps + vbmeta-disable note). The device-fixup
-# half (making a given GSI actually boot with working RIL/sensors) is manual - see docs/06-gsi-porting.md.
+# Deterministic half: download the GSI, normalise it (unzip, decompress xz/gz/lz4, sparse->raw,
+# validate the fs by magic bytes), and build an A31 flashing kit (fastbootd/recovery steps +
+# vbmeta-disable note). The device-fixup half (making a given GSI actually boot with working
+# RIL/sensors) is manual - see docs/06-gsi-porting.md.
 
 on:
   workflow_dispatch:
     inputs:
       gsi_url:
-        description: "Direct URL to the GSI (.img / .img.xz / .img.gz / .zip / .7z)"
+        description: "Direct URL to the GSI (.img / .img.xz / .img.gz / .img.lz4 / .zip / .7z)"
         required: true
       label:
         description: "Short name for the output"
@@ -30,41 +31,74 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             android-sdk-libsparse-utils xz-utils p7zip-full unzip wget \
-            erofs-utils e2fsprogs zip file
+            erofs-utils e2fsprogs zip file lz4 xxd
 
       - name: Download GSI
         run: |
-          mkdir work && cd work
-          wget --no-verbose -O gsi.src "${{ github.event.inputs.gsi_url }}"
-          ls -lh gsi.src; file gsi.src
+          set -e
+          mkdir -p work && cd work
+          URL='${{ github.event.inputs.gsi_url }}'
+          echo "Fetching (not printing the URL/token)..."
+          wget --tries=3 --timeout=90 --no-verbose -O gsi.src "$URL"
+          ls -lh gsi.src
+          echo "type: $(file -b gsi.src)"
+          # A signed/expired download link often returns an HTML page instead of the file.
+          if file gsi.src | grep -qiE 'HTML|ASCII text'; then
+            echo "::error::The URL returned HTML/text, not a binary image - the link may have expired or needs a browser. First bytes:"
+            head -c 400 gsi.src; echo; exit 1
+          fi
 
-      - name: Decompress and detect
+      - name: Normalise to a raw filesystem image
         run: |
+          set -e
           cd work
           t="$(file -b gsi.src)"
+          # 1. If it is an archive, expand and take the LARGEST file (the system image).
           case "$t" in
-            *XZ*)        xz -dc gsi.src > system.raw ;;
-            *gzip*)      gzip -dc gsi.src > system.raw ;;
-            *Zip*)       unzip -o gsi.src >/dev/null; mv "$(ls *.img | head -1)" system.raw ;;
-            *7-zip*)     7z e -y gsi.src >/dev/null; mv "$(ls *.img | head -1)" system.raw ;;
-            *)           cp gsi.src system.raw ;;
+            *Zip*)   echo "zip contents:"; unzip -l gsi.src | sed -n '1,40p'
+                     mkdir -p ex && (cd ex && unzip -o ../gsi.src >/dev/null)
+                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"
+                     echo "picked largest entry: $big"; cp "$big" cand.bin ;;
+            *7-zip*) mkdir -p ex && (cd ex && 7z e -y ../gsi.src >/dev/null)
+                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"
+                     echo "picked largest entry: $big"; cp "$big" cand.bin ;;
+            *)       cp gsi.src cand.bin ;;
           esac
-          if file system.raw | grep -qi "Android sparse"; then
-            simg2img system.raw system.ext && mv system.ext system.raw
-          fi
-          echo "raw size: $(du -h system.raw | cut -f1)"; file system.raw
-          if file system.raw | grep -qiE "ext[234] filesystem|EROFS"; then
-            echo "OK: looks like a valid GSI system image"
+          # 2. Iteratively peel compression / sparse until it is a raw filesystem (handles nesting).
+          for i in 1 2 3 4 5; do
+            m="$(file -b cand.bin)"
+            magic="$(head -c4 cand.bin | xxd -p)"
+            if   echo "$m" | grep -qi 'XZ';   then echo "xz  -> decompress";   xz -dc   cand.bin > n && mv n cand.bin; continue; fi
+            if   echo "$m" | grep -qi 'gzip'; then echo "gzip-> decompress";   gzip -dc cand.bin > n && mv n cand.bin; continue; fi
+            if   echo "$m" | grep -qi 'LZ4';  then echo "lz4 -> decompress";   lz4 -dc  cand.bin > n && mv n cand.bin; continue; fi
+            if   [ "$magic" = "3aff26ed" ];   then echo "sparse-> simg2img";   simg2img cand.bin n && mv n cand.bin; continue; fi
+            break
+          done
+          mv cand.bin system.raw
+          echo "normalised: $(du -h system.raw | cut -f1)  type: $(file -b system.raw)"
+          # 3. Validate by magic bytes (robust - `file` often cannot name EROFS).
+          ext4="$(dd if=system.raw bs=1 skip=1080 count=2 2>/dev/null | xxd -p)"   # ext magic 0xEF53 @0x438 -> '53ef'
+          erofs="$(dd if=system.raw bs=1 skip=1024 count=4 2>/dev/null | xxd -p)"  # erofs magic @0x400 -> 'e2e1f5e0'
+          echo "ext4_magic@0x438=$ext4  erofs_magic@0x400=$erofs"
+          if [ "$ext4" = "53ef" ]; then
+            echo "FS=ext4" | tee fs.txt
+          elif [ "$erofs" = "e2e1f5e0" ]; then
+            echo "FS=erofs" | tee fs.txt
           else
-            echo "::warning::not a recognised ext4/erofs system image - the URL may not be a raw GSI"
+            echo "FS=unknown" | tee fs.txt
+            echo "::warning::Not a recognised ext4/erofs system image after normalisation - the URL may be a full ROM/OTA, not a raw GSI system image."
           fi
 
       - name: Build A31 flashing kit
         run: |
+          set -e
           mkdir -p out/a31-gsi
           cp kit/gsi/flash-A31-gsi.md out/a31-gsi/README.md
           cp kit/gsi/disable-vbmeta.md out/a31-gsi/ 2>/dev/null || true
-          echo "source: ${{ github.event.inputs.gsi_url }}" > out/a31-gsi/source.txt
+          { echo "label: ${{ github.event.inputs.label }}"
+            echo "detected_fs: $(cat work/fs.txt 2>/dev/null)"
+            echo "normalised_size: $(du -h work/system.raw 2>/dev/null | cut -f1)"
+          } > out/a31-gsi/source.txt
           ( cd out && zip -r9 "../a31-gsi-kit-${{ github.event.inputs.label }}.zip" a31-gsi )
           ls -lh a31-gsi-kit-*.zip
 
@@ -74,6 +108,18 @@ jobs:
           cd work
           img2simg system.raw system.sparse.img 2>/dev/null || cp system.raw system.sparse.img
           ls -lh system.sparse.img
+
+      - name: Summary
+        run: |
+          {
+            echo "## GSI port result"
+            echo "- label: **${{ github.event.inputs.label }}**"
+            echo "- detected filesystem: **$(cat work/fs.txt 2>/dev/null || echo n/a)**"
+            echo "- normalised image size: **$(du -h work/system.raw 2>/dev/null | cut -f1)**"
+            echo "- flashing kit: artifact **a31-gsi-flash-kit**"
+            echo ""
+            echo "Next: download the kit, follow its README (fastbootd, disable vbmeta, flash system, wipe data)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload A31 flashing kit
         uses: actions/upload-artifact@v4
