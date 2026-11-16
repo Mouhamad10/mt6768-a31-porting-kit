@@ -1,23 +1,30 @@
 name: Port GSI for A31 (SM-A315F)
 
 # Manual run: Actions -> "Port GSI for A31 (SM-A315F)" -> Run workflow, paste a GSI URL.
-# Deterministic half: download the GSI, normalise it (unzip, decompress xz/gz/lz4, sparse->raw,
-# validate the fs by magic bytes), and build an A31 flashing kit (fastbootd/recovery steps +
-# vbmeta-disable note). The device-fixup half (making a given GSI actually boot with working
-# RIL/sensors) is manual - see docs/06-gsi-porting.md.
+# This PORTS a GSI for the A31: download + normalise -> mount -> apply an A31 system-side
+# recipe (display density + a props hook + an overlay slot) -> shrink to EROFS -> repack a
+# flashable system image, split into <2GB parts for download, plus the flash kit.
+#
+# Honest scope: a GSI is the SYSTEM partition only, so this edits /system (density, props,
+# RRO overlays, size). Vendor-side problems (audio/RIL/sensor HALs) are NOT fixable from a GSI
+# - those come from the stock A31 vendor or a different GSI variant. The recipe grows as tweaks
+# are proven on-device; see docs/06-gsi-porting.md.
 
 on:
   workflow_dispatch:
     inputs:
       gsi_url:
-        description: "Direct URL to the GSI (.img / .img.xz / .img.gz / .img.lz4 / .zip / .7z)"
+        description: "Direct URL to the GSI (.img / .img.xz / .gz / .lz4 / .zip / .7z)"
         required: true
       label:
         description: "Short name for the output"
         default: "gsi"
-      attach_image:
-        description: "Also convert and upload the flashable system image (large, slow)"
-        default: "false"
+      lcd_density:
+        description: "A31 display density to inject (A31 is 1080x2400; 420 is a good default)"
+        default: "420"
+      output_format:
+        description: "Shrink format: 'erofs' (smallest) or 'ext4' (resize2fs -M)"
+        default: "erofs"
 
 jobs:
   port:
@@ -25,6 +32,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { path: kit }
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost /opt/az 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h / | tail -1
 
       - name: Install tools
         run: |
@@ -39,97 +53,130 @@ jobs:
           mkdir -p work && cd work
           URL='${{ github.event.inputs.gsi_url }}'
           echo "Fetching (not printing the URL/token)..."
-          wget --tries=3 --timeout=90 --no-verbose -O gsi.src "$URL"
-          ls -lh gsi.src
-          echo "type: $(file -b gsi.src)"
-          # A signed/expired download link often returns an HTML page instead of the file.
+          wget --tries=3 --timeout=120 --no-verbose -O gsi.src "$URL"
+          ls -lh gsi.src; echo "type: $(file -b gsi.src)"
           if file gsi.src | grep -qiE 'HTML|ASCII text'; then
-            echo "::error::The URL returned HTML/text, not a binary image - the link may have expired or needs a browser. First bytes:"
-            head -c 400 gsi.src; echo; exit 1
+            echo "::error::URL returned HTML/text, not an image - link may have expired."; head -c 400 gsi.src; exit 1
           fi
 
-      - name: Normalise to a raw filesystem image
+      - name: Normalise to a raw ext4 image
         run: |
           set -e
           cd work
           t="$(file -b gsi.src)"
-          # 1. If it is an archive, expand and take the LARGEST file (the system image).
           case "$t" in
-            *Zip*)   echo "zip contents:"; unzip -l gsi.src | sed -n '1,40p'
+            *Zip*)   echo "zip contents:"; unzip -l gsi.src | sed -n '1,20p'
                      mkdir -p ex && (cd ex && unzip -o ../gsi.src >/dev/null)
-                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"
-                     echo "picked largest entry: $big"; cp "$big" cand.bin ;;
+                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"; cp "$big" cand.bin ;;
             *7-zip*) mkdir -p ex && (cd ex && 7z e -y ../gsi.src >/dev/null)
-                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"
-                     echo "picked largest entry: $big"; cp "$big" cand.bin ;;
+                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"; cp "$big" cand.bin ;;
             *)       cp gsi.src cand.bin ;;
           esac
-          # 2. Iteratively peel compression / sparse until it is a raw filesystem (handles nesting).
           for i in 1 2 3 4 5; do
-            m="$(file -b cand.bin)"
-            magic="$(head -c4 cand.bin | xxd -p)"
-            if   echo "$m" | grep -qi 'XZ';   then echo "xz  -> decompress";   xz -dc   cand.bin > n && mv n cand.bin; continue; fi
-            if   echo "$m" | grep -qi 'gzip'; then echo "gzip-> decompress";   gzip -dc cand.bin > n && mv n cand.bin; continue; fi
-            if   echo "$m" | grep -qi 'LZ4';  then echo "lz4 -> decompress";   lz4 -dc  cand.bin > n && mv n cand.bin; continue; fi
-            if   [ "$magic" = "3aff26ed" ];   then echo "sparse-> simg2img";   simg2img cand.bin n && mv n cand.bin; continue; fi
+            m="$(file -b cand.bin)"; magic="$(head -c4 cand.bin | xxd -p)"
+            if   echo "$m" | grep -qi 'XZ';   then xz -dc   cand.bin > n && mv n cand.bin; continue; fi
+            if   echo "$m" | grep -qi 'gzip'; then gzip -dc cand.bin > n && mv n cand.bin; continue; fi
+            if   echo "$m" | grep -qi 'LZ4';  then lz4 -dc  cand.bin > n && mv n cand.bin; continue; fi
+            if   [ "$magic" = "3aff26ed" ];   then simg2img cand.bin n && mv n cand.bin; continue; fi
             break
           done
           mv cand.bin system.raw
+          rm -rf gsi.src ex                       # free disk
           echo "normalised: $(du -h system.raw | cut -f1)  type: $(file -b system.raw)"
-          # 3. Validate by magic bytes (robust - `file` often cannot name EROFS).
-          ext4="$(dd if=system.raw bs=1 skip=1080 count=2 2>/dev/null | xxd -p)"   # ext magic 0xEF53 @0x438 -> '53ef'
-          erofs="$(dd if=system.raw bs=1 skip=1024 count=4 2>/dev/null | xxd -p)"  # erofs magic @0x400 -> 'e2e1f5e0'
-          echo "ext4_magic@0x438=$ext4  erofs_magic@0x400=$erofs"
-          if [ "$ext4" = "53ef" ]; then
-            echo "FS=ext4" | tee fs.txt
-          elif [ "$erofs" = "e2e1f5e0" ]; then
-            echo "FS=erofs" | tee fs.txt
-          else
-            echo "FS=unknown" | tee fs.txt
-            echo "::warning::Not a recognised ext4/erofs system image after normalisation - the URL may be a full ROM/OTA, not a raw GSI system image."
-          fi
+          ext4="$(dd if=system.raw bs=1 skip=1080 count=2 2>/dev/null | xxd -p)"
+          erofs="$(dd if=system.raw bs=1 skip=1024 count=4 2>/dev/null | xxd -p)"
+          if   [ "$ext4" = "53ef" ];        then echo "FS=ext4"  | tee fs.txt
+          elif [ "$erofs" = "e2e1f5e0" ];   then echo "FS=erofs" | tee fs.txt
+          else echo "FS=unknown" | tee fs.txt; echo "::warning::input is not ext4/erofs - may be a full ROM, not a GSI system image"; fi
 
-      - name: Build A31 flashing kit
+      - name: Apply A31 system recipe
         run: |
           set -e
-          mkdir -p out/a31-gsi
-          cp kit/gsi/flash-A31-gsi.md out/a31-gsi/README.md
-          cp kit/gsi/disable-vbmeta.md out/a31-gsi/ 2>/dev/null || true
-          { echo "label: ${{ github.event.inputs.label }}"
-            echo "detected_fs: $(cat work/fs.txt 2>/dev/null)"
-            echo "normalised_size: $(du -h work/system.raw 2>/dev/null | cut -f1)"
-          } > out/a31-gsi/source.txt
-          ( cd out && zip -r9 "../a31-gsi-kit-${{ github.event.inputs.label }}.zip" a31-gsi )
-          ls -lh a31-gsi-kit-*.zip
-
-      - name: Convert to flashable sparse image (optional)
-        if: ${{ github.event.inputs.attach_image == 'true' }}
-        run: |
           cd work
-          img2simg system.raw system.sparse.img 2>/dev/null || cp system.raw system.sparse.img
-          ls -lh system.sparse.img
+          if ! grep -q "FS=ext4" fs.txt; then
+            echo "::warning::input is not ext4 - cannot edit in place; passing image through unchanged for packaging"
+            cp system.raw tree_src_is_image && echo "SRC=image" > src.txt && exit 0
+          fi
+          # ext4 GSIs are often marked shared_blocks (read-only); unshare so we can edit.
+          sudo e2fsck -y -f -E unshare_blocks system.raw || sudo e2fsck -y -f system.raw || true
+          sudo resize2fs system.raw 7G || true           # a little slack for edits
+          mkdir -p sysroot
+          if sudo mount -o loop,rw system.raw sysroot; then echo "SRC=mount" > src.txt; else
+            sudo mount -o loop,ro system.raw sysroot; echo "SRC=mount-ro" > src.txt
+            echo "::warning::rw mount failed - editing skipped, will still shrink/repack"; fi
+          echo "root entries:"; sudo ls sysroot | head
+          if grep -q "SRC=mount$" src.txt; then
+            D='${{ github.event.inputs.lcd_density }}'
+            for f in $(sudo find sysroot -maxdepth 3 -name build.prop 2>/dev/null); do
+              if ! sudo grep -q "A31 (SM-A315F) port" "$f"; then
+                echo "inject A31 props -> $f"
+                printf '\n# --- A31 (SM-A315F) port ---\nro.sf.lcd_density=%s\n' "$D" | sudo tee -a "$f" >/dev/null
+              fi
+            done
+            # overlay slot: drop any RRO APKs we ship into /product/overlay
+            if ls kit/gsi/a31-overlays/*.apk >/dev/null 2>&1; then
+              sudo mkdir -p sysroot/product/overlay
+              sudo cp kit/gsi/a31-overlays/*.apk sysroot/product/overlay/ && echo "added overlays"
+            fi
+          fi
 
-      - name: Summary
+      - name: Shrink + repack flashable system image
         run: |
+          set -e
+          cd work
+          OUT="system-a31-${{ github.event.inputs.label }}"
+          FMT='${{ github.event.inputs.output_format }}'
+          if grep -q "SRC=image" src.txt; then
+            cp system.raw "$OUT.img"
+          elif [ "$FMT" = "erofs" ]; then
+            sudo mkfs.erofs -zlz4hc "$OUT.img" sysroot     # builds EROFS from the (edited) mounted tree, preserves xattrs
+            sudo umount sysroot || true
+          else
+            sudo umount sysroot || true
+            sudo e2fsck -y -f system.raw || true
+            sudo resize2fs -M system.raw || true
+            cp system.raw "$OUT.img"
+          fi
+          rm -f system.raw
+          sudo chown "$USER" "$OUT.img" 2>/dev/null || true
+          echo "FINAL $(ls -lh $OUT.img | awk '{print $5}')  type: $(file -b $OUT.img)"
+          # split into <2GB parts so it fits GitHub's 2GB-per-file artifact limit
+          split -b 1900M -d "$OUT.img" "${OUT}.img.part."
+          ls -lh "${OUT}.img.part."* 2>/dev/null || cp "$OUT.img" "${OUT}.img.part.00"
+          echo "$OUT" > outname.txt
+
+      - name: Assemble flashing kit
+        run: |
+          set -e
+          cd work
+          OUT="$(cat outname.txt)"
+          mkdir -p dist
+          mv "${OUT}.img.part."* dist/
+          cp ../kit/gsi/flash-A31-gsi.md   dist/README.md 2>/dev/null || true
+          cp ../kit/gsi/disable-vbmeta.md  dist/ 2>/dev/null || true
+          cat > dist/HOW-TO-REJOIN.txt <<EOF
+          This ported A31 system image was split so it fits GitHub's 2GB artifact limit.
+          Rejoin it before flashing:
+
+            Linux/Mac:  cat ${OUT}.img.part.* > system.img
+            Windows:    copy /b ${OUT}.img.part.00 + ${OUT}.img.part.01 system.img
+
+          Then follow README.md (fastbootd -> disable vbmeta -> fastboot flash system system.img -> wipe data).
+          Format: $(cat fs.txt)  |  density injected: ${{ github.event.inputs.lcd_density }}
+          EOF
+          ls -lh dist/
           {
-            echo "## GSI port result"
+            echo "## A31 GSI port result"
             echo "- label: **${{ github.event.inputs.label }}**"
-            echo "- detected filesystem: **$(cat work/fs.txt 2>/dev/null || echo n/a)**"
-            echo "- normalised image size: **$(du -h work/system.raw 2>/dev/null | cut -f1)**"
-            echo "- flashing kit: artifact **a31-gsi-flash-kit**"
+            echo "- input fs: **$(cat fs.txt)**  -> output format: **${{ github.event.inputs.output_format }}**"
+            echo "- ported image: **$(du -ch dist/${OUT}.img.part.* | tail -1 | cut -f1)** (split into $(ls dist/${OUT}.img.part.* | wc -l) parts)"
+            echo "- injected: lcd_density=${{ github.event.inputs.lcd_density }}"
             echo ""
-            echo "Next: download the kit, follow its README (fastbootd, disable vbmeta, flash system, wipe data)."
+            echo "Download the **a31-ported-gsi** artifact, rejoin per HOW-TO-REJOIN.txt, then flash per README.md."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload A31 flashing kit
+      - name: Upload ported GSI + kit
         uses: actions/upload-artifact@v4
         with:
-          name: a31-gsi-flash-kit
-          path: a31-gsi-kit-*.zip
-
-      - name: Upload flashable system image
-        if: ${{ github.event.inputs.attach_image == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: a31-system-image
-          path: work/system.sparse.img
+          name: a31-ported-gsi
+          path: work/dist/*
