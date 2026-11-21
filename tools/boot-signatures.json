@@ -2,6 +2,10 @@
   "_comment": "Boot-log signature database for the MT6768 / A31 porting kit. triage-bootlog.py scans a kernel log against these. 'severity': fatal = boot-blocking; intentional = deliberate, not a bug; warning = non-fatal but real; info = harmless/marker. 'fallback': true = a generic/collateral signature that is SUPPRESSED when a more specific cause is already identified (near a specific explainer, or anywhere once a non-fallback fatal is present) - keeps teardown noise and generic catchers from masquerading as the root cause. 'correlations' escalate a combination: when all listed ids fire in one log, the note is raised in the verdict. 'fix' points to a crash-database section or patch; it is \"\" when the problem is an old-kernel-vs-new-Android capability gap with NO source patch (the real fix is a newer kernel base). The triage NEVER invents a patch; for an unknown fatal it only flags that a human/AI must read the trace. Add new signatures as you find them.",
   "correlations": [
     {
+      "all": ["stale-partition-dm-status", "selinux-setup-abort"],
+      "note": "ROOT CAUSE = init::SetupSelinux() aborted while a REMOVED logical partition (e.g. product) is still listed in fstab/dynamic_partitions_info, so init still queries it via device-mapper, gets 'DM_DEV_STATUS failed for <partition>: No such device or address', and the split-sepolicy load that follows cannot find that partition's sepolicy/file_contexts/property_contexts pieces. InitAborter() kills PID1, the kernel cannot survive PID1 dying, and (on this platform) that panic is caught by Samsung's sec_debug/WDT path which forces sec_reboot(0, 'bootloader') - landing on a device with only fastbootd (no real interactive bootloader) in a hard bootloop with no easy way out. Deleting the partition image is NOT enough - every reference to it (fstab.<chip>, dynamic_partitions_info.txt / misc_info, the sepolicy manifest) must be removed together, or SetupSelinux keeps expecting files that no longer exist. This is independent of enforcing vs permissive: permissive only skips ENFORCING denials from an already-loaded policy, it does not help if the policy cannot be LOADED/merged at all."
+    },
+    {
       "all": ["netbpf-load-fail", "bpfloader-reboot"],
       "note": "ROOT CAUSE = the kernel eBPF gap. netbpfload could not load the tethering BPF programs AND the bpfloader init service (reboot_on_failure) force-rebooted the device (reboot,bpfloader-failed). The old 4.14 kernel lacks BPF features this Android build's bpfloader requires, so the device bootloops every boot. Real fix: a newer kernel base (5.10+ GKI). Stopgap only: remove 'reboot_on_failure' from the bpfloader init .rc so a BPF failure degrades networking instead of bricking boot (that is how the working 4.14 ROM tolerates the identical warning)."
     },
@@ -55,6 +59,25 @@
       "meaning": "The mtktsAP-sysrst cooler calls BUG() as a 'thermal protection reset' when its zone crosses a trip at init. The AP NTC (BTS, thermistor-ch*) is mis-mapped/mis-calibrated on this port, reports an impossible temperature, the trip fires immediately, and the SoC reboots. Dies ~1.1s.",
       "fix": "bring-up/crash-database.md#3-thermal-sysrst",
       "action": "Not yet fixed in-tree. Either correct the io-channels/thermistor-ch* auxadc mapping for the A31, or make set_cur_state log-and-return instead of BUG() on a clearly bogus init-time trip."
+    },
+    {
+      "id": "selinux-setup-abort",
+      "name": "init SetupSelinux() abort (InitAborter) - policy LOAD failure, not an enforcement denial",
+      "regex": "InitAborter\\(char const\\*\\)|SetupSelinux\\(char\\*\\*\\)",
+      "severity": "fatal",
+      "meaning": "init's SetupSelinux() called InitAborter() and PID1 died. This fires during POLICY LOAD/MERGE, before enforcement even matters - a permissive kernel (androidboot.selinux=permissive) does NOT protect against this, because permissive only skips enforcing denials from a policy that already loaded; it cannot load a policy that fails to merge/parse at all. Usual causes on a GSI-on-older-vendor port: (1) a plat_sepolicy_vers.txt / sepolicy_version mismatch between the vendor's declared platform API level and the mapping .cil files the system/GSI ships (same class of bug as the A31 plat_sepolicy_vers 31-vs-30 fix, just a different pair of versions); (2) the split-sepolicy loader still expecting pieces (sepolicy/file_contexts/property_contexts) from a partition that was removed but not fully de-listed from fstab/dynamic_partitions_info - see the stale-partition-dm-status correlation when both fire together.",
+      "fix": "bring-up/crash-database.md#5-initsetupselinux-abort-policy-load-failure-not-an-enforcement-denial",
+      "action": "Diff the vendor's /vendor/etc/selinux/plat_sepolicy_vers.txt against the mapping .cil files under /system/etc/selinux/mapping/ on the GSI - the vendor's declared version must have a matching mapping file on the system side. Then grep the vendor/system fstab and dynamic_partitions_info/misc_info for every removed partition (e.g. product) and delete all references, not just the partition image, and recompile/repackage the merged sepolicy (precompiled_sepolicy) afterward so it no longer expects files from a partition that is gone."
+    },
+    {
+      "id": "stale-partition-dm-status",
+      "name": "DM_DEV_STATUS failed for a removed logical partition",
+      "regex": "DM_DEV_STATUS failed for (\\w+): No such device or address",
+      "severity": "warning",
+      "fallback": true,
+      "meaning": "init tried to query a logical (dynamic) partition via device-mapper and it does not exist. By itself this is often tolerated (init just logs 'Could not update logical partition' and moves on) - it only becomes the root cause when it is immediately followed by a selinux-setup-abort in the SAME boot (see that correlation), meaning something still expects files that lived on the now-removed partition.",
+      "fix": "bring-up/crash-database.md#5-initsetupselinux-abort-policy-load-failure-not-an-enforcement-denial",
+      "action": "Confirm every fstab entry, dynamic_partitions_info/misc_info reference AND the sepolicy manifest for the named partition were removed together with the partition image itself - not just the image."
     },
     {
       "id": "init-reboot-on-failure",

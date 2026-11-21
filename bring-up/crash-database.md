@@ -96,6 +96,90 @@ instead**, so the RAM log survives and you can read who asked to power off. **De
 
 ---
 
+## 5. init::SetupSelinux() abort — policy LOAD failure, not an enforcement denial
+
+**Confirmed on:** [`Mouhamad10/oneos-a31` release `vendor-lumi-ext4-v1`](https://github.com/Mouhamad10/oneos-a31/releases/tag/vendor-lumi-ext4-v1)
+(`vendor_a31_lumi.img`, ext4) — a **stock Samsung Android 12** vendor
+(`ro.vendor.build.fingerprint=samsung/a31nsxx/a31:12/SP1A.210812.016/A315GXXU5DXJ1:user/release-keys`,
+`ro.vndk.version=31`, security patch 2022-03) — paired with an Android 15 GSI.
+
+**Signature** (`~2.4-2.6 s`, MT6768/A31, this vendor + Android 15 GSI, `product` removed from the layout):
+```
+init: Could not update logical partition
+init: DM_DEV_STATUS failed for product: No such device or address
+init: Could not update logical partition
+init: Missing /vendor/etc/selinux/vendor_sepolicy_debug.cil
+init:   #01 pc ... /system/bin/init (android::init::InitAborter(char const*)+48)
+init:   #04 pc ... /system/bin/init (android::init::SetupSelinux(char**)+4960)
+... ~1.8 s later ...
+init: sec_reboot (0, bootloader)
+<WDT register dump, hardware reset>
+```
+
+**Cause:** this is a **policy load/merge failure**, which happens before enforcement is even
+consulted — an `androidboot.selinux=permissive` kernel does **not** protect against it. Permissive
+mode only skips *enforcing* denials from a policy that already loaded successfully; `SetupSelinux()`
+calls `InitAborter()` when it cannot construct a valid merged policy at all, regardless of
+enforcing/permissive. Two contributing factors, usually seen together on a GSI-on-older-vendor port:
+
+1. **`plat_sepolicy_vers.txt` / sepolicy mapping mismatch** — the vendor (here, a One UI 6.1 /
+   Android 14 vendor) declares a platform sepolicy API level in
+   `/vendor/etc/selinux/plat_sepolicy_vers.txt`. The system side must ship a matching
+   `/system/etc/selinux/mapping/<that version>.cil` to translate old vendor policy into the newer
+   platform policy. Pairing an old vendor with a newer (Android 15) GSI is exactly the situation
+   where that mapping file can be missing — the same class of bug as the A31 `31` vs `30`
+   `plat_sepolicy_vers.txt` fix, just a different pair of versions.
+2. **Stale, non-`nofail` reference to a removed partition — CONFIRMED on this vendor.** `product`
+   was deliberately removed (this GSI does not need it), but the vendor's own
+   `/vendor/etc/fstab.mt6768` (inside `vendor_a31_lumi.img`) still ships:
+   ```
+   product /product ext4 ro wait,,avb,logical,first_stage_mount
+   ```
+   — `wait` with **no `nofail`**, meaning fs_mgr treats `/product` as a **mandatory** partition.
+   Deleting the partition image is not the same as telling fstab it is optional: init still calls
+   `DM_DEV_STATUS` for it at boot (→ `No such device or address`, directly in this log), and with no
+   `nofail` the split-sepolicy loader that follows still expects `product_sepolicy.cil` /
+   `product_file_contexts` / `product_property_contexts` to exist. **This is the confirmed,
+   reproducible cause on this specific vendor release.**
+
+**Why it ends in `fastbootd` instead of a normal retry:** once `InitAborter()` kills PID1, the kernel
+cannot continue (PID1 dying is always fatal to Linux). On this platform that kernel panic is caught by
+Samsung's `sec_debug`/watchdog path, which forces `sec_reboot(0, "bootloader")` and performs the reset
+via the MTK watchdog (`toprgu`) — visible as the WDT register dump right after. If this device/build
+only exposes `fastbootd` (no interactive preloader/bootloader menu) for that reboot target, the device
+has no soft way out of the loop. **This is a symptom of the crash, not a separate bug to patch around**
+— fixing the two causes above so `SetupSelinux()` never aborts is what stops the reboot from
+happening in the first place, which is the only reliable way to stay out of `fastbootd` here.
+
+**Fix:**
+1. **Do this first (confirmed cause):** in `fstab.mt6768` inside the vendor image, either delete the
+   `product` line entirely or add `nofail` to its flags:
+   ```
+   product /product ext4 ro wait,nofail,avb,logical,first_stage_mount
+   ```
+   This alone stops the `DM_DEV_STATUS failed for product` fatal path, since fs_mgr will then treat a
+   missing `/product` as optional instead of a boot-blocking requirement.
+2. **Still verify (unconfirmed, may compound):** this vendor declares `plat_sepolicy_vers.txt = 31.0`
+   / `ro.vndk.version=31` — a **stock Android 12** vendor (security patch 2022-03) being paired with
+   an Android 15 GSI, a 3-major-version vendor freeze gap. Confirm the GSI's
+   `/system/etc/selinux/mapping/` still ships a `31.0.cil` — if the GSI build dropped mapping support
+   below a higher floor (e.g. only ships 33.0.cil and up), `SetupSelinux()` can still abort even after
+   fix #1, independent of the `product` issue.
+3. Recompile/repackage the merged policy (`precompiled_sepolicy`) after any vendor-side change, so it
+   matches the updated `fstab`/sepolicy manifest.
+4. Re-run [`tools/triage-bootlog.py`](../tools/triage-bootlog.py) on the next capture — the
+   `selinux-setup-abort` / `stale-partition-dm-status` correlation (in
+   [`boot-signatures.json`](../tools/boot-signatures.json)) will confirm whether the same fault
+   still fires, and whether a *different* fatal signature appears instead (pointing at cause #1).
+
+**Status:** cause #2 (`product` fstab entry missing `nofail`) is **confirmed** by direct inspection of
+`vendor_a31_lumi.img` from
+[`oneos-a31` release `vendor-lumi-ext4-v1`](https://github.com/Mouhamad10/oneos-a31/releases/tag/vendor-lumi-ext4-v1).
+Cause #1 (sepolicy mapping-version gap) is a plausible compounding factor given the Android-12-vendor
++ Android-15-GSI pairing, but needs the GSI's `/system/etc/selinux/mapping/` contents to confirm.
+
+---
+
 ## Reading a crash yourself
 
 The Image is gzip inside the Android boot image. To static-analyze a `pc :`/`lr :` without the
