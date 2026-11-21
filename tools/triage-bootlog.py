@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Boot-log triage for the MT6768 / A31 porting kit.
+# Boot-log triage for MT6768 Samsung ports (A31 / A41).
 #
 # Reads a kernel log (plain text, or a binary ramoops/pmsg dump - NUL bytes are
 # handled by extracting printable strings), scans it against tools/boot-signatures.json,
@@ -144,7 +144,7 @@ def main():
     else:
         verdict = "No known fatal or warning signature matched."
 
-    out = ["# A31 boot-log triage", ""]
+    out = ["# MT6768 boot-log triage (A31 / A41)", ""]
     out.append(f"- **Log:** `{os.path.basename(args.logfile)}`"
                + ("  _(binary ramoops/pmsg - decoded via string extraction)_" if was_binary else ""))
     out.append(f"- **Boot reached:** {boot_progress(text)}")
