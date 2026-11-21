@@ -209,6 +209,15 @@
       "meaning": "Services dying AFTER the reboot was already decided, as init tears down all services (e.g. mobicore SIGABRT, vold SIGKILL). Collateral of the already-committed reboot, NOT independent causes. This is the vold line the naive 'reboot_on_failure ... failed' regex wrongly promoted to a culprit.",
       "fix": "",
       "action": "Suppressed whenever a reboot reason (bpfloader-reboot) is already present earlier in the same boot. Do not count as separate boot-fatal faults."
+    },
+    {
+      "id": "logical-partition-dm-status-missing",
+      "name": "Dynamic logical partition missing from device-mapper (non-fatal unless separately proven)",
+      "regex": "DM_DEV_STATUS failed for ([A-Za-z0-9_]+): No such device or address",
+      "severity": "warning",
+      "meaning": "init queried a logical partition (here, system_ext or product) that has no active device-mapper node. The log then says 'Could not update logical partition'. This is a real dynamic-partition/fstab inconsistency to investigate, but this warning alone does not establish why SELinux policy compilation failed. Do not correlate it with SetupSelinux abort unless independent evidence proves a causal dependency.",
+      "fix": "bring-up/a41-selinux-xperms.md",
+      "action": "Compare super metadata, dynamic partition group definitions, fstab entries, and the actual logical partition list. Keep this separate from the ioctl-xperms compiler failure unless the next capture proves a direct dependency."
     }
   ]
 }
