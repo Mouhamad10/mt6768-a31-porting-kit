@@ -20,14 +20,14 @@ tweaks are done with a Magisk overlay instead.**
 | Path | What it is |
 |---|---|
 | [`docs/`](docs/) | Device facts, the kernels and their sources, mainline/GKI status, build environment |
-| [`bring-up/`](bring-up/) | **The crash database**, the recovery-safe test method, the 4G/modem investigation, the exFAT/sdfat fix |
+| [`bring-up/`](bring-up/) | **The crash database**, including A41 SELinux xperms diagnosis, the recovery-safe test method, 4G/modem and exFAT/sdfat findings |
 | [`patches/`](patches/) | The A31 patch stack (29 patches) on top of the 4.19 `fire` base |
 | [`configs/`](configs/) | `a31_defconfig` + the fragment |
 | [`tools/`](tools/) | Boot-image (un)packer, DT-table tools, build scripts, merge helpers |
 | [`magisk/`](magisk/) | Touch watchdog and LTE-guard modules (no kernel change needed) |
 | [`roadmap/`](roadmap/) | Feature targets: KernelSU, fast charge, NetHunter, EROFS, Windows-on-ARM drivers, 5.10 GKI |
 
-## Source trees (full kernel sources, hosted separately)
+## Device scope\n\nThe original patch stack and hardware profile target the Galaxy A31 (SM-A315F). A separate evidence-based bring-up note now covers the Galaxy A41 (SM-A415F) on MT6768. Do not reuse A31 DT, panel, PMIC, partition, or kernel assumptions on A41 without validating the exact A41 source and device logs.\n\n## Source trees (full kernel sources, hosted separately)
 
 This kit holds the **patches and documentation**, not gigabytes of upstream source. The full trees:
 

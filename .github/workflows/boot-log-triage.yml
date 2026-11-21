@@ -1,4 +1,4 @@
-name: Triage a boot log (A31 / MT6768)
+name: Triage a boot log (A31 / A41 MT6768)
 
 # Manual run: Actions -> "Triage a boot log (A31 / MT6768)" -> Run workflow.
 # Give it a URL to a kernel log (or the path of one committed in this repo). It scans the log
@@ -58,5 +58,5 @@ jobs:
       - name: Upload triage report
         uses: actions/upload-artifact@v4
         with:
-          name: a31-boot-triage-${{ github.event.inputs.label }}
+          name: mt6768-boot-triage-${{ github.event.inputs.label }}
           path: triage-*.md

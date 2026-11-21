@@ -102,3 +102,7 @@ When you hit a new crash the tool does not recognise:
    new-Android capability gap with no patch, where the fix is a newer kernel).
 4. Add an entry to `tools/boot-signatures.json` (and a `correlations` rule if it is only fatal in
    combination). Now every future log with that fault is triaged automatically.
+
+- The A41-specific **ioctl-xperms policy compile failure** (`selinux-xperms-policy-compile-fail`) is fatal: secilc cannot serialize a remaining ioctl-xperm rule when init caps the target policy version to 29. The generic policy-load abort is a fallback. See [`a41-selinux-xperms.md`](a41-selinux-xperms.md).
+
+- The A41 **missing logical-partition DM status** (`logical-partition-dm-status-missing`) is recorded as a warning only. It is deliberately not correlated with the ioctl-xperms compiler failure: the supplied A41 log does not prove a causal link between them.

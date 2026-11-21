@@ -1,16 +1,48 @@
 {
-  "_comment": "Boot-log signature database for the MT6768 / A31 porting kit. triage-bootlog.py scans a kernel log against these. 'severity': fatal = boot-blocking; intentional = deliberate, not a bug; warning = non-fatal but real; info = harmless/marker. 'fallback': true = a generic/collateral signature that is SUPPRESSED when a more specific cause is already identified (near a specific explainer, or anywhere once a non-fallback fatal is present) - keeps teardown noise and generic catchers from masquerading as the root cause. 'correlations' escalate a combination: when all listed ids fire in one log, the note is raised in the verdict. 'fix' points to a crash-database section or patch; it is \"\" when the problem is an old-kernel-vs-new-Android capability gap with NO source patch (the real fix is a newer kernel base). The triage NEVER invents a patch; for an unknown fatal it only flags that a human/AI must read the trace. Add new signatures as you find them.",
+  "_comment": "Boot-log signature database for the MT6768 / A31 porting kit. triage-bootlog.py scans a kernel log against these. 'severity': fatal = boot-blocking; intentional = deliberate, not a bug; warning = non-fatal but real; info = harmless/marker. 'fallback': true = a generic/collateral signature that is SUPPRESSED when a more specific cause is already identified (near a specific explainer, or anywhere once a non-fallback fatal is present) - keeps teardown noise and generic catchers from masquerading as the root cause. 'correlations' escalate a combination: when all listed ids fire in one log, the note is raised in the verdict. 'fix' points to a crash-database section or patch; it is \"\" when the problem is an old-kernel-vs-new-Android capability gap with NO source patch (the real fix is a newer kernel base). The triage NEVER invents a patch; for an unknown fatal it only flags that a human/AI must read the trace. Add new signatures as you find them. A41-specific signatures are device-scoped in their documentation; do not transfer them to A31 without matching evidence.",
   "correlations": [
     {
-      "all": ["netbpf-load-fail", "bpfloader-reboot"],
+      "all": [
+        "selinux-xperms-policy-compile-fail",
+        "selinux-policy-load-abort"
+      ],
+      "note": "ROOT CAUSE = SELinux policy compilation failed because init selected policy version 29 after the running A41 kernel advertised no ioctl-xperms support, but at least one ioctl extended-permission rule remained in the merged CIL. libsepol refused to serialize the binary policy; SetupSelinux then aborted. Audit the exact kernel tree for complete xperms parse/write/runtime support before exposing policy version 30. The log does not identify the remaining CIL source file."
+    },
+    {
+      "all": [
+        "netbpf-load-fail",
+        "bpfloader-reboot"
+      ],
       "note": "ROOT CAUSE = the kernel eBPF gap. netbpfload could not load the tethering BPF programs AND the bpfloader init service (reboot_on_failure) force-rebooted the device (reboot,bpfloader-failed). The old 4.14 kernel lacks BPF features this Android build's bpfloader requires, so the device bootloops every boot. Real fix: a newer kernel base (5.10+ GKI). Stopgap only: remove 'reboot_on_failure' from the bpfloader init .rc so a BPF failure degrades networking instead of bricking boot (that is how the working 4.14 ROM tolerates the identical warning)."
     },
     {
-      "all": ["netbpf-load-fail", "clat-coordinator-abort"],
+      "all": [
+        "netbpf-load-fail",
+        "clat-coordinator-abort"
+      ],
       "note": "The system_server ClatCoordinator SIGABRT is the user-space face of the SAME missing clat (464XLAT) BPF maps - a symptom of the eBPF gap, not an independent bug."
     }
   ],
   "signatures": [
+    {
+      "id": "selinux-policy-load-abort",
+      "name": "init SELinux policy load abort (fallback)",
+      "regex": "Unable to open SELinux policy|InitFatalReboot: signal 6|InitAborter\\(char const\\*\\)|SetupSelinux\\(char\\*\\*\\)",
+      "severity": "fatal",
+      "fallback": true,
+      "meaning": "init failed while loading or setting up the SELinux policy. This is a policy load/compile failure, not proof of an enforcing denial. A more specific compiler signature should identify the actual cause when present.",
+      "fix": "bring-up/crash-database.md#a41-selinux-ioctl-xperms-policy-compile-failure",
+      "action": "Inspect the secilc/libsepol errors immediately before this abort. Do not infer a cause from InitAborter alone; check policy version, CIL inputs, mapping files, and partition-provided policy fragments."
+    },
+    {
+      "id": "selinux-xperms-policy-compile-fail",
+      "name": "SELinux secilc rejects ioctl xperms at policy version 29 (A41 capture)",
+      "regex": "libsepol\\.avtab_write_item: policy version [0-9]+ does not support ioctl extendedpermissions rules|policy version 29 does not support ioctl extendedpermissions rules",
+      "severity": "fatal",
+      "meaning": "The merged SELinux CIL still contains at least one ioctl extended-permission rule, but secilc is emitting policy version 29. libsepol cannot serialize that rule, so no binary policy is produced. In the captured SM-A415F boot, init first capped the policy version from 30 to 29 because the running kernel reported no xperms support, then failed during SetupSelinux. This is a policy-format/kernel-capability mismatch, not an SELinux enforcing denial.",
+      "fix": "bring-up/crash-database.md#a41-selinux-ioctl-xperms-policy-compile-failure",
+      "action": "Audit the exact kernel source: POLICYDB_VERSION_XPERMS_IOCTL / POLICYDB_VERSION_MAX, AVTAB_XPERMS parsing and serialization, runtime xperm decision evaluation, selinuxfs policyvers, and config overrides. Do NOT merely raise the maximum to 30 unless the complete implementation is present. Also identify why xperms stripping left a rule behind; do not blindly delete xperm policy rules."
+    },
     {
       "id": "bpfloader-reboot",
       "name": "bpfloader reboot_on_failure bootloop",
@@ -177,6 +209,15 @@
       "meaning": "Services dying AFTER the reboot was already decided, as init tears down all services (e.g. mobicore SIGABRT, vold SIGKILL). Collateral of the already-committed reboot, NOT independent causes. This is the vold line the naive 'reboot_on_failure ... failed' regex wrongly promoted to a culprit.",
       "fix": "",
       "action": "Suppressed whenever a reboot reason (bpfloader-reboot) is already present earlier in the same boot. Do not count as separate boot-fatal faults."
+    },
+    {
+      "id": "logical-partition-dm-status-missing",
+      "name": "Dynamic logical partition missing from device-mapper (non-fatal unless separately proven)",
+      "regex": "DM_DEV_STATUS failed for ([A-Za-z0-9_]+): No such device or address",
+      "severity": "warning",
+      "meaning": "init queried a logical partition (here, system_ext or product) that has no active device-mapper node. The log then says 'Could not update logical partition'. This is a real dynamic-partition/fstab inconsistency to investigate, but this warning alone does not establish why SELinux policy compilation failed. Do not correlate it with SetupSelinux abort unless independent evidence proves a causal dependency.",
+      "fix": "bring-up/a41-selinux-xperms.md",
+      "action": "Compare super metadata, dynamic partition group definitions, fstab entries, and the actual logical partition list. Keep this separate from the ioctl-xperms compiler failure unless the next capture proves a direct dependency."
     }
   ]
 }
