@@ -187,3 +187,10 @@ strongest argument for the 5.10 move. The only 4.14 stopgap is to remove `reboot
 `bpfloader` `.rc`, which lets the device boot with broken tethering/clat instead of bricking. The
 [boot-log triage](boot-log-signatures.md) tool encodes this as the `bpfloader-reboot` /
 `netbpf-load-fail` / `clat-coordinator-abort` signatures plus a same-boot correlation rule.
+
+
+---
+
+## A41 — SELinux ioctl-xperms policy compile failure
+
+See [`a41-selinux-xperms.md`](a41-selinux-xperms.md) for the evidence-backed SM-A415F diagnosis. The captured A41 kernel was 4.14.186 Atrocious V6; init capped the SELinux policy format from 30 to 29, but the merged CIL retained an ioctl-xperm rule. `libsepol` rejected policy-v29 serialization, `secilc` exited 255, and `SetupSelinux()` aborted. This is distinct from the earlier A31/A34 dynamic-partition hypothesis: the `product`/`system_ext` DM warnings are not established as the cause of this compiler error. The exact remaining CIL source and the exact A41 kernel implementation are still to be audited.
