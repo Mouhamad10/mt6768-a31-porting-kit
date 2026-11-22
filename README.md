@@ -9,7 +9,11 @@ working 4.14 kernel toward a **5.10 GKI** build.
 Everything here was produced while bringing the device up on a One UI 8 (Android 16) port
 (UN1CA) running on the **stock Android 12 vendor** (`A315FXXS5DXB1`). The guiding rule throughout:
 **the kernel adapts to the stock vendor's 4.14 ABI — the vendor partition is never patched; vendor
-tweaks are done with a Magisk overlay instead.**
+tweaks are done with a Magisk overlay instead.** (One narrow exception: the
+[GSI vendor fstab patcher](tools/patch_vendor_fstab.sh) flips a `nofail` flag on a partition
+*you've already removed from the layout* — see [`crash-database.md#5`](bring-up/crash-database.md).
+That's fixing a self-inflicted boot-blocker from the GSI pairing itself, not a stock-vendor
+behavior change, so it doesn't fit the Magisk-overlay model the rest of this kit uses.)
 
 > Maintained by [@Mouhamad10](https://github.com/Mouhamad10). If you are porting another MT6768
 > device, the bring-up method and crash database transfer almost directly; the device-specific
@@ -23,7 +27,7 @@ tweaks are done with a Magisk overlay instead.**
 | [`bring-up/`](bring-up/) | **The crash database**, the recovery-safe test method, the 4G/modem investigation, the exFAT/sdfat fix |
 | [`patches/`](patches/) | The A31 patch stack (29 patches) on top of the 4.19 `fire` base |
 | [`configs/`](configs/) | `a31_defconfig` + the fragment |
-| [`tools/`](tools/) | Boot-image (un)packer, DT-table tools, build scripts, merge helpers |
+| [`tools/`](tools/) | Boot-image (un)packer, DT-table tools, build scripts, merge helpers, [vendor fstab patcher](tools/patch_vendor_fstab.sh) + [sepolicy mapping checker](tools/check_sepolicy_mapping.py) |
 | [`magisk/`](magisk/) | Touch watchdog and LTE-guard modules (no kernel change needed) |
 | [`roadmap/`](roadmap/) | Feature targets: KernelSU, fast charge, NetHunter, EROFS, Windows-on-ARM drivers, 5.10 GKI |
 

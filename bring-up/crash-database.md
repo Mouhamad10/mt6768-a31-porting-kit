@@ -152,19 +152,31 @@ has no soft way out of the loop. **This is a symptom of the crash, not a separat
 happening in the first place, which is the only reliable way to stay out of `fastbootd` here.
 
 **Fix:**
-1. **Do this first (confirmed cause):** in `fstab.mt6768` inside the vendor image, either delete the
-   `product` line entirely or add `nofail` to its flags:
+1. **Do this first (confirmed cause) — now automated:** run
+   [`tools/patch_vendor_fstab.sh`](../tools/patch_vendor_fstab.sh) on the vendor image, or use the
+   **"Patch vendor fstab + check sepolicy mapping"** GitHub Action
+   ([`patch-vendor.yml`](../.github/workflows/patch-vendor.yml)). It adds `nofail` to the matching
+   fstab line(s) without touching anything else (AVB flags, fs type, every other partition):
    ```
-   product /product ext4 ro wait,nofail,avb,logical,first_stage_mount
+   product /product ext4 ro wait,nofail,,avb,logical,first_stage_mount
    ```
    This alone stops the `DM_DEV_STATUS failed for product` fatal path, since fs_mgr will then treat a
-   missing `/product` as optional instead of a boot-blocking requirement.
-2. **Still verify (unconfirmed, may compound):** this vendor declares `plat_sepolicy_vers.txt = 31.0`
-   / `ro.vndk.version=31` — a **stock Android 12** vendor (security patch 2022-03) being paired with
-   an Android 15 GSI, a 3-major-version vendor freeze gap. Confirm the GSI's
-   `/system/etc/selinux/mapping/` still ships a `31.0.cil` — if the GSI build dropped mapping support
-   below a higher floor (e.g. only ships 33.0.cil and up), `SetupSelinux()` can still abort even after
-   fix #1, independent of the `product` issue.
+   missing `/product` as optional instead of a boot-blocking requirement. It also writes a
+   `vendor-sepolicy-report.txt` with the vendor's `plat_sepolicy_vers.txt` / `vendor_sepolicy_version`
+   / `ro.vndk.version` for step 2.
+   > This is the one place in this kit that patches the vendor image at all (see the note in the
+   > [README](../README.md)) - everywhere else the rule is "adapt the kernel, never the vendor". It's
+   > justified here because the mismatch is self-inflicted by the GSI pairing (you removed `product`
+   > from the layout), not a stock-vendor behavior being changed.
+2. **Still verify (unconfirmed, may compound) — also automated:** this vendor declares
+   `plat_sepolicy_vers.txt = 31.0` / `ro.vndk.version=31` — a **stock Android 12** vendor (security
+   patch 2022-03) being paired with an Android 15 GSI, a 3-major-version vendor freeze gap. Run
+   [`tools/check_sepolicy_mapping.py`](../tools/check_sepolicy_mapping.py) `31.0 <gsi-or-system.img>`
+   (or fill `gsi_url` in the same Action) to confirm the GSI's `/system/etc/selinux/mapping/` still
+   ships a `31.0.cil` — if the GSI build dropped mapping support below a higher floor (e.g. only ships
+   `33.0.cil` and up), `SetupSelinux()` can still abort even after fix #1, independent of the
+   `product` issue. This check is informational only — there is no safe automatic fix for a missing
+   mapping file (pulling one forward from another system image is a manual, per-build decision).
 3. Recompile/repackage the merged policy (`precompiled_sepolicy`) after any vendor-side change, so it
    matches the updated `fstab`/sepolicy manifest.
 4. Re-run [`tools/triage-bootlog.py`](../tools/triage-bootlog.py) on the next capture — the
