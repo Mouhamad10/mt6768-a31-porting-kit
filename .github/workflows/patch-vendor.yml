@@ -1,0 +1,151 @@
+name: Patch vendor fstab + check sepolicy mapping
+
+# Manual run: Actions -> "Patch vendor fstab + check sepolicy mapping" -> Run workflow.
+#
+# Fixes the confirmed root cause in bring-up/crash-database.md#5: a vendor fstab that still
+# lists a partition removed from the flashed layout (e.g. "product") as MANDATORY ("wait" with
+# no "nofail"). That makes init query DM_DEV_STATUS for it at boot, fail, and the split-sepolicy
+# load that follows aborts init - a fatal fault that fires even with
+# androidboot.selinux=permissive, because it is a policy LOAD failure, not an enforcement denial.
+#
+# This also (optionally) checks the OTHER half of the same crash-database entry (cause #1): does
+# the target GSI/system still ship the sepolicy mapping .cil file this vendor's
+# plat_sepolicy_vers.txt needs? That check is informational only - there is no safe automatic
+# fix for a missing mapping file, so this workflow never patches the GSI side.
+#
+# Honest scope: this edits fstab flags only. It does not touch sepolicy content, partition
+# layout, or anything else on the vendor image.
+
+on:
+  workflow_dispatch:
+    inputs:
+      vendor_url:
+        description: "Direct URL to the vendor image (.img / .img.gz / .img.xz)"
+        required: true
+      optional_partitions:
+        description: "Space-separated mount points to mark nofail (partitions removed from your layout)"
+        default: "product"
+      gsi_url:
+        description: "Optional: direct URL to the target GSI/system image, to check sepolicy mapping compatibility (cause #1). Leave empty to skip."
+        default: ""
+      mirror:
+        description: "Also upload the patched vendor image to GoFile (anonymous, no login)? true/false"
+        default: "true"
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: kit }
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost /opt/az 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h / | tail -1
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            e2fsprogs erofs-utils xz-utils file wget python3
+
+      - name: Download vendor image
+        run: |
+          set -e
+          mkdir -p work && cd work
+          URL='${{ github.event.inputs.vendor_url }}'
+          echo "Fetching (not printing the URL/token)..."
+          wget --tries=3 --timeout=120 --no-verbose -O vendor.src "$URL"
+          t="$(file -b vendor.src)"
+          if echo "$t" | grep -qiE 'HTML|ASCII text'; then
+            echo "::error::URL returned HTML/text, not an image - link may have expired."; exit 1
+          fi
+          if echo "$t" | grep -qi 'XZ';   then xz   -dc vendor.src > vendor.img
+          elif echo "$t" | grep -qi 'gzip'; then gzip -dc vendor.src > vendor.img
+          else cp vendor.src vendor.img; fi
+          rm -f vendor.src
+          echo "vendor image: $(du -h vendor.img | cut -f1)  type: $(file -b vendor.img)"
+
+      - name: Patch fstab (nofail for removed partitions)
+        run: |
+          set -e
+          cd work
+          sudo bash ../kit/tools/patch_vendor_fstab.sh vendor.img "${{ github.event.inputs.optional_partitions }}"
+          sudo chown "$USER" vendor-patched.img vendor-sepolicy-report.txt
+          echo "---- sepolicy report ----"
+          cat vendor-sepolicy-report.txt
+
+      - name: Download GSI and check sepolicy mapping (optional)
+        if: ${{ github.event.inputs.gsi_url != '' }}
+        run: |
+          set +e
+          cd work
+          URL='${{ github.event.inputs.gsi_url }}'
+          wget --tries=3 --timeout=120 --no-verbose -O gsi.src "$URL"
+          t="$(file -b gsi.src)"
+          if echo "$t" | grep -qi 'XZ';   then xz   -dc gsi.src > gsi.img
+          elif echo "$t" | grep -qi 'gzip'; then gzip -dc gsi.src > gsi.img
+          else cp gsi.src gsi.img; fi
+          rm -f gsi.src
+          VERS=$(grep -oE 'plat_sepolicy_vers.txt: [0-9.]+' vendor-sepolicy-report.txt | cut -d' ' -f2)
+          echo "checking mapping for vendor version: $VERS"
+          python3 ../kit/tools/check_sepolicy_mapping.py "$VERS" gsi.img | tee sepolicy-mapping-check.txt
+          rm -f gsi.img
+
+      - name: Write job summary
+        if: always()
+        run: |
+          cd work
+          {
+            echo "## Vendor fstab patch result"
+            echo ""
+            echo '```'
+            cat vendor-sepolicy-report.txt 2>/dev/null
+            echo '```'
+            if [ -f sepolicy-mapping-check.txt ]; then
+              echo ""
+              echo "### Sepolicy mapping check against the given GSI"
+              echo '```'
+              cat sepolicy-mapping-check.txt
+              echo '```'
+            fi
+            echo ""
+            echo "Flash \`vendor-patched.img\` as your vendor partition. This only changes fstab"
+            echo "nofail flags - everything else in the vendor image is untouched."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mirror a direct link (GoFile)
+        if: ${{ github.event.inputs.mirror == 'true' }}
+        run: |
+          set +e
+          cd work
+          F=vendor-patched.img
+          [ -s "$F" ] || { echo "no patched image to mirror"; exit 0; }
+          SZ=$(ls -lh "$F" | awk '{print $5}')
+          SHA=$(sha256sum "$F" | cut -d' ' -f1)
+          SRV=$(curl -s https://api.gofile.io/servers | grep -oE '"name":"[a-z0-9-]+"' | head -1 | cut -d'"' -f4)
+          [ -z "$SRV" ] && SRV=store1
+          R=$(curl -s --retry 3 --retry-delay 5 -F "file=@$F" "https://${SRV}.gofile.io/contents/uploadfile")
+          GF=$(echo "$R" | grep -oE '"downloadPage":"[^"]+"' | head -1 | cut -d'"' -f4)
+          {
+            echo ""
+            echo "### Direct download (no GitHub needed)"
+            if [ -n "$GF" ]; then
+              echo "- **GoFile ($SZ):** $GF"
+            else
+              echo "- GoFile upload failed (see log). The artifact below still works."
+            fi
+            echo "SHA256: \`$SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload patched vendor image + reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendor-patched
+          path: |
+            work/vendor-patched.img
+            work/vendor-sepolicy-report.txt
+            work/sepolicy-mapping-check.txt

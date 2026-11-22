@@ -88,7 +88,12 @@ a specific cause is already identified, and listed under "suppressed" so nothing
   audio, not boot-fatal;
 - the generic **reboot-reason catcher** and **service-exit-timeout** (so any *future* reboot names its
   culprit even without a specific signature), the **teardown collateral** (vold/mobicore/apexd), and
-  the TEE/RPMB/exFAT/PERFMON/unprivileged-bpf markers.
+  the TEE/RPMB/exFAT/PERFMON/unprivileged-bpf markers;
+- the **`init::SetupSelinux()` abort** (`selinux-setup-abort`, fatal) — a sepolicy LOAD/merge failure
+  that an `androidboot.selinux=permissive` kernel does **not** protect against — correlated with
+  **`stale-partition-dm-status`** (a removed logical partition, e.g. `product`, still referenced in
+  fstab/dynamic_partitions_info) to raise a single root-cause callout. See
+  [`crash-database.md`](crash-database.md#5-initsetupselinux-abort-policy-load-failure-not-an-enforcement-denial).
 
 ## Adding a signature (the real workflow)
 
