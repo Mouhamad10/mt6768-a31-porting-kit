@@ -190,6 +190,32 @@ happening in the first place, which is the only reliable way to stay out of `fas
 Cause #1 (sepolicy mapping-version gap) is a plausible compounding factor given the Android-12-vendor
 + Android-15-GSI pairing, but needs the GSI's `/system/etc/selinux/mapping/` contents to confirm.
 
+### ⚠️ `nofail` regression — observed, not fully explained
+
+On this same vendor/GSI pairing, flashing a vendor patched with `nofail` (keeping the `product`
+fstab line, just making it non-fatal) regressed boot: instead of reaching second-stage init and
+aborting at `SetupSelinux()` (the original signature above), the device now fast-reboots at the
+boot logo — i.e. it fails in **first-stage** init, *earlier* than the unpatched baseline. The
+reboot is fast enough that no new console-ramoops capture survives it, so this has not been
+confirmed with a log — logged here as an observed correlation, not a proven mechanism.
+
+**Working theory:** some GSI builds embed their own compatibility stub for a merged/absent
+`product` (e.g. a symlink or stub directory shipped inside `system.img` itself, so the GSI is
+self-contained without a separate `product` partition at all). A fstab line for the same mount
+point that is merely marked optional (`nofail`) — as opposed to fully absent — may still cause
+first-stage init to attempt to reconcile two different ideas of what `/product` is, in a way a
+vendor with *no* `product` fstab entry at all does not. Unconfirmed.
+
+**Current default: delete the line entirely, not `nofail`.**
+[`tools/patch_vendor_fstab.sh`](../tools/patch_vendor_fstab.sh) now defaults to `--mode delete`
+(removes the matching fstab line(s) outright); `--mode nofail` still exists for comparison
+testing but should not be assumed safe given the above. Re-tested against
+`vendor_a31_lumi.img` after this change: `fstab.mt6768` goes from 113 to 112 lines, no `product`
+reference remains anywhere in the file, `tune2fs -l` still reports `Filesystem state: clean` with
+identical feature flags. **Not yet flight-tested on-device** (reported by the repo owner as the
+next thing to try) — if this still fails, the next log capture is what this kit actually needs to
+move past "observed regression" into a confirmed mechanism.
+
 ---
 
 ## Reading a crash yourself
