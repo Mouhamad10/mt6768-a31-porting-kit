@@ -1,6 +1,6 @@
 #!/bin/bash
 # Patch a vendor.img's fstab so partitions removed from the flashed layout (e.g. "product")
-# are marked optional ("nofail") instead of mandatory ("wait" with no nofail).
+# no longer block boot.
 #
 # Root cause this fixes (see bring-up/crash-database.md#5):
 #   fstab.<chip> still lists a removed partition as mandatory -> init queries DM_DEV_STATUS
@@ -10,17 +10,30 @@
 #   This fires even with androidboot.selinux=permissive, because it is a policy LOAD failure,
 #   not an enforcement denial.
 #
-# This script only ADDS "nofail" to the flags of matching mount-point lines in every
-# fstab.* file found under /etc on the vendor image. It never removes a line, never touches
-# any other field (so AVB/dm-verity flags, the fs type, everything else is untouched), and is
-# a no-op (prints "already nofail") on a line that already has it.
+# MODE (default: delete). See bring-up/crash-database.md#5 "nofail regression" for why delete
+# is now the default: on at least one real device/GSI pairing, adding "nofail" (keeping the
+# fstab line, just making it non-fatal) made boot fail EARLIER (first-stage, fast reboot to
+# the logo) than the original mandatory-but-unpatched line did (which at least reached
+# second-stage init before aborting). The suspected reason is that some GSI builds embed their
+# own compatibility stub for a merged/absent product (e.g. a symlink or stub dir shipped
+# inside system.img) and a *present-but-empty* fstab entry for the same mount point - even one
+# marked optional - can conflict with that stub in first-stage init in a way a fully-absent
+# entry does not. Deleting the line outright has not reintroduced that regression in testing.
+#   --mode delete  (default): removes the matching line(s) entirely.
+#   --mode nofail           : old behavior, adds ",nofail" to the flags instead of deleting.
+#     Only use this if you have confirmed on your own device/GSI pairing that nofail does not
+#     regress boot earlier than the unpatched baseline - it has NOT reliably fixed this family
+#     of boot failures and should not be assumed safe.
+#
+# This script never touches any other line or field (so AVB/dm-verity flags, the fs type,
+# every other partition's entry - all untouched).
 #
 # Usage:
-#   sudo tools/patch_vendor_fstab.sh <vendor.img> [space-separated mount points, default: product]
+#   sudo tools/patch_vendor_fstab.sh <vendor.img> [mount points, default: product] [--mode delete|nofail]
 #
 # Example:
 #   sudo tools/patch_vendor_fstab.sh vendor_a31_lumi.img product
-#   sudo tools/patch_vendor_fstab.sh vendor_a31_lumi.img "product system_ext"
+#   sudo tools/patch_vendor_fstab.sh vendor_a31_lumi.img "product system_ext" --mode nofail
 #
 # Also dumps the vendor's /etc/selinux/plat_sepolicy_vers.txt, vendor_sepolicy_version and
 # ro.vndk.version (from build.prop) into vendor-sepolicy-report.txt next to the output image,
@@ -30,8 +43,12 @@
 set -e
 IMG="$1"
 PARTS="${2:-product}"
-[ -n "$IMG" ] && [ -f "$IMG" ] || { echo "usage: $0 <vendor.img> [mount points, default: product]"; exit 1; }
+MODE="delete"
+if [ "$3" = "--mode" ] && [ -n "$4" ]; then MODE="$4"; fi
+[ -n "$IMG" ] && [ -f "$IMG" ] || { echo "usage: $0 <vendor.img> [mount points, default: product] [--mode delete|nofail]"; exit 1; }
+case "$MODE" in delete|nofail) ;; *) echo "invalid --mode '$MODE' (use delete or nofail)"; exit 1;; esac
 if [ "$(id -u)" != "0" ]; then echo "needs root (loop mount) - run with sudo"; exit 1; fi
+echo "mode: $MODE"
 
 OUT="$(basename "$IMG" .img)-patched.img"
 REPORT="$(dirname "$IMG")/vendor-sepolicy-report.txt"
@@ -62,16 +79,22 @@ for f in "$MNT"/etc/fstab.*; do
     [ -z "$line" ] && continue
     lineno="${line%%:*}"
     content="${line#*:}"
-    if echo "$content" | grep -q 'nofail'; then
-      echo "$(basename "$f"): $mp already nofail - skipped"
-      continue
+    if [ "$MODE" = "delete" ]; then
+      sed -i "${lineno}d" "$f"
+      echo "$(basename "$f"): $mp -> line deleted"
+      CHANGED=$((CHANGED + 1))
+    else
+      if echo "$content" | grep -q 'nofail'; then
+        echo "$(basename "$f"): $mp already nofail - skipped"
+        continue
+      fi
+      # Insert ",nofail" right after the first "wait" token in the flags field, without
+      # touching anything else on the line (avb mode, logical, first_stage_mount, etc).
+      newcontent="$(echo "$content" | sed -E 's/(wait)/\1,nofail/')"
+      sed -i "${lineno}s#.*#${newcontent}#" "$f"
+      echo "$(basename "$f"): $mp -> added nofail"
+      CHANGED=$((CHANGED + 1))
     fi
-    # Insert ",nofail" right after the first "wait" token in the flags field, without
-    # touching anything else on the line (avb mode, logical, first_stage_mount, etc).
-    newcontent="$(echo "$content" | sed -E 's/(wait)/\1,nofail/')"
-    sed -i "${lineno}s#.*#${newcontent}#" "$f"
-    echo "$(basename "$f"): $mp -> added nofail"
-    CHANGED=$((CHANGED + 1))
   done
 done
 
@@ -85,9 +108,11 @@ done
   grep -E '^ro\.vndk\.version=|^ro\.vendor\.build\.fingerprint=|^ro\.vendor\.build\.security_patch=|^ro\.board\.(first_)?api_level=|^ro\.product\.first_api_level=' \
     "$MNT/build.prop" 2>/dev/null || echo "build.prop props not found"
   echo
-  echo "NOTE: this script only patches fstab nofail flags. It does NOT check this version"
-  echo "against a GSI's /system/etc/selinux/mapping/*.cil - run tools/check_sepolicy_mapping.py"
-  echo "against the target GSI/system image for that (crash-database.md#5, cause #1)."
+  echo "mode: $MODE  (partitions: $PARTS)"
+  echo "NOTE: this script only patches the fstab entry/entries above. It does NOT check this"
+  echo "version against a GSI's /system/etc/selinux/mapping/*.cil - run"
+  echo "tools/check_sepolicy_mapping.py against the target GSI/system image for that"
+  echo "(crash-database.md#5, cause #1)."
 } > "$REPORT"
 
 umount "$MNT"

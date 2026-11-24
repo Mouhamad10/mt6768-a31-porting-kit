@@ -23,8 +23,13 @@ on:
         description: "Direct URL to the vendor image (.img / .img.gz / .img.xz)"
         required: true
       optional_partitions:
-        description: "Space-separated mount points to mark nofail (partitions removed from your layout)"
+        description: "Space-separated mount points to remove from fstab (partitions removed from your layout)"
         default: "product"
+      mode:
+        description: "delete (default, recommended) removes the fstab line entirely; nofail keeps it but marks it optional - see crash-database.md#5 'nofail regression' before using nofail"
+        type: choice
+        options: [delete, nofail]
+        default: "delete"
       gsi_url:
         description: "Optional: direct URL to the target GSI/system image, to check sepolicy mapping compatibility (cause #1). Leave empty to skip."
         default: ""
@@ -73,7 +78,7 @@ jobs:
         run: |
           set -e
           cd work
-          sudo bash ../kit/tools/patch_vendor_fstab.sh vendor.img "${{ github.event.inputs.optional_partitions }}"
+          sudo bash ../kit/tools/patch_vendor_fstab.sh vendor.img "${{ github.event.inputs.optional_partitions }}" --mode "${{ github.event.inputs.mode }}"
           sudo chown "$USER" vendor-patched.img vendor-sepolicy-report.txt
           echo "---- sepolicy report ----"
           cat vendor-sepolicy-report.txt
