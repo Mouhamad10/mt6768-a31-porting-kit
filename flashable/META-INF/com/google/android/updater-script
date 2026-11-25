@@ -1,0 +1,2 @@
+# All logic lives in update-binary (shell script, AnyKernel-style). This file is
+# intentionally unused by that mechanism but must exist for recovery to accept the zip.

@@ -1,0 +1,85 @@
+#!/sbin/sh
+# Flashable TWRP zip: disables the stale "product" fstab entry in every fstab.* file
+# under /vendor/etc on this device. See bring-up/crash-database.md#5 in
+# Mouhamad10/mt6768-a31-porting-kit for why this line causes a boot-blocking
+# init::SetupSelinux() abort even with androidboot.selinux=permissive.
+#
+# This is the "delete/disable" fix, not nofail - see the "nofail regression" note in the
+# same doc: nofail was observed to make boot fail EARLIER on at least one real
+# device/GSI pairing, not fully explained, so this zip does not offer a nofail option.
+#
+# Shared vendor base for A31 + A41 (both MT6768/Helio P65): matches any fstab.* file,
+# not just fstab.mt6768, so the same zip works on either device.
+#
+# WHY THIS SCRIPT OVERWRITES A SINGLE BYTE INSTEAD OF DELETING/REWRITING THE LINE:
+# confirmed by testing against the actual flashed vendor image: it reports 0 bytes
+# truly available for new writes (ext4 "Available: 0" via statfs even though the raw
+# superblock free-block count is nonzero), so ANY technique that needs to allocate even
+# one new block - sed -i (temp file + rename), or even "filter to a smaller file then
+# truncate+rewrite the original inode" - fails with "No space left on device". The one
+# thing that reliably works at 0 available space is overwriting EXISTING bytes with a
+# SAME-LENGTH replacement and no truncation: this turns the fstab line into a comment by
+# dd'ing a single '#' over its first byte (conv=notrunc, no file size change at all), so
+# no new block is ever allocated. Android's fstab parser skips '#'-prefixed lines, so a
+# commented-out line behaves exactly like a deleted one for boot purposes - the original
+# text is still physically present on disk (minus that one byte) if you ever want to
+# restore it by hand.
+#
+# Default partitions disabled: product (space-separated; edit PARTS below to add more,
+# e.g. PARTS="product system_ext" if you've also dropped system_ext from your layout).
+
+OUTFD="$2"
+PARTS="product"
+
+ui_print() { printf 'ui_print %s\nui_print\n' "$1" >> /proc/self/fd/$OUTFD; }
+
+ui_print " "
+ui_print "=== vendor fstab patch (disable stale partition refs) ==="
+ui_print "partitions: $PARTS"
+
+mount -o rw /vendor 2>/dev/null
+mount -o remount,rw /vendor 2>/dev/null
+
+if [ ! -d /vendor/etc ] || [ ! -w /vendor/etc ]; then
+  ui_print "ERROR: could not mount /vendor read-write - aborting, nothing changed."
+  exit 1
+fi
+
+CHANGED=0
+FAILED=0
+for f in /vendor/etc/fstab.*; do
+  [ -f "$f" ] || continue
+  BASENAME="$(basename "$f")"
+  for mp in $PARTS; do
+    OFFSET="$(grep -bE "^${mp}[[:space:]]+/${mp}[[:space:]]" "$f" 2>/dev/null | head -1 | cut -d: -f1)"
+    [ -z "$OFFSET" ] && continue
+    FIRSTBYTE="$(dd if="$f" bs=1 skip="$OFFSET" count=1 2>/dev/null)"
+    if [ "$FIRSTBYTE" = "#" ]; then
+      ui_print "$BASENAME: $mp already disabled - skipped"
+      continue
+    fi
+    if printf '#' | dd of="$f" bs=1 seek="$OFFSET" count=1 conv=notrunc 2>/tmp/dderr_$$; then
+      ui_print "$BASENAME: $mp -> commented out (byte $OFFSET)"
+      CHANGED=$((CHANGED + 1))
+    else
+      ui_print "ERROR patching $BASENAME ($mp): $(cat /tmp/dderr_$$ 2>/dev/null)"
+      FAILED=1
+    fi
+    rm -f /tmp/dderr_$$
+  done
+done
+
+if [ "$FAILED" -eq 1 ]; then
+  ui_print "One or more entries FAILED to patch - see errors above. Do not assume success."
+elif [ "$CHANGED" -eq 0 ]; then
+  ui_print "No matching, un-disabled fstab line found for [$PARTS] - nothing to do."
+else
+  ui_print "Disabled $CHANGED entry/entries. File size unchanged (single-byte overwrite), safe even with 0 free space."
+fi
+
+sync
+umount /vendor 2>/dev/null
+ui_print "=== done ==="
+ui_print " "
+[ "$FAILED" -eq 1 ] && exit 1
+exit 0

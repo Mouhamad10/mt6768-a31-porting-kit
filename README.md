@@ -28,6 +28,7 @@ behavior change, so it doesn't fit the Magisk-overlay model the rest of this kit
 | [`patches/`](patches/) | The A31 patch stack (29 patches) on top of the 4.19 `fire` base |
 | [`configs/`](configs/) | `a31_defconfig` + the fragment |
 | [`tools/`](tools/) | Boot-image (un)packer, DT-table tools, build scripts, merge helpers, [vendor fstab patcher](tools/patch_vendor_fstab.sh) + [sepolicy mapping checker](tools/check_sepolicy_mapping.py) |
+| [`flashable/`](flashable/) | [TWRP-flashable zip](flashable/README.md) that disables a stale vendor fstab entry on an already-flashed `/vendor`, no re-flash needed |
 | [`magisk/`](magisk/) | Touch watchdog and LTE-guard modules (no kernel change needed) |
 | [`roadmap/`](roadmap/) | Feature targets: KernelSU, fast charge, NetHunter, EROFS, Windows-on-ARM drivers, 5.10 GKI |
 

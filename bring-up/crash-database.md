@@ -152,18 +152,21 @@ has no soft way out of the loop. **This is a symptom of the crash, not a separat
 happening in the first place, which is the only reliable way to stay out of `fastbootd` here.
 
 **Fix:**
-1. **Do this first (confirmed cause) — now automated:** run
-   [`tools/patch_vendor_fstab.sh`](../tools/patch_vendor_fstab.sh) on the vendor image, or use the
-   **"Patch vendor fstab + check sepolicy mapping"** GitHub Action
-   ([`patch-vendor.yml`](../.github/workflows/patch-vendor.yml)). It adds `nofail` to the matching
-   fstab line(s) without touching anything else (AVB flags, fs type, every other partition):
-   ```
-   product /product ext4 ro wait,nofail,,avb,logical,first_stage_mount
-   ```
-   This alone stops the `DM_DEV_STATUS failed for product` fatal path, since fs_mgr will then treat a
-   missing `/product` as optional instead of a boot-blocking requirement. It also writes a
-   `vendor-sepolicy-report.txt` with the vendor's `plat_sepolicy_vers.txt` / `vendor_sepolicy_version`
-   / `ro.vndk.version` for step 2.
+1. **Do this first (confirmed cause) — now automated, two ways:**
+   - **Before flashing:** run [`tools/patch_vendor_fstab.sh`](../tools/patch_vendor_fstab.sh) on the
+     vendor image file, or use the **"Patch vendor fstab + check sepolicy mapping"** GitHub Action
+     ([`patch-vendor.yml`](../.github/workflows/patch-vendor.yml)). Default mode `delete` removes the
+     matching fstab line(s) entirely; it also writes a `vendor-sepolicy-report.txt` with the vendor's
+     `plat_sepolicy_vers.txt` / `vendor_sepolicy_version` / `ro.vndk.version` for step 2.
+   - **On an already-flashed device, from TWRP:** flash
+     [`flashable/patch-vendor-fstab-twrp.zip`](../flashable/) instead of re-flashing the whole vendor
+     image - it disables the matching line(s) directly on the live `/vendor`. See
+     [`flashable/README.md`](../flashable/README.md) for why it comments out the line (`dd` of a
+     single `#` byte, no file-size change) instead of deleting it: this specific vendor image reports
+     **zero bytes truly available** for new writes, which breaks `sed -i` and any rewrite-based
+     delete, confirmed by testing against the real image.
+   Either way the result is the same: `fs_mgr` treats `/product` as absent-and-optional instead of a
+   boot-blocking requirement, which stops the `DM_DEV_STATUS failed for product` fatal path.
    > This is the one place in this kit that patches the vendor image at all (see the note in the
    > [README](../README.md)) - everywhere else the rule is "adapt the kernel, never the vendor". It's
    > justified here because the mismatch is self-inflicted by the GSI pairing (you removed `product`
