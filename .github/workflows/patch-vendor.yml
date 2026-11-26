@@ -55,7 +55,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            e2fsprogs erofs-utils xz-utils file wget python3
+            e2fsprogs erofs-utils xz-utils unzip file wget python3
 
       - name: Download vendor image
         run: |
@@ -86,17 +86,31 @@ jobs:
       - name: Download GSI and check sepolicy mapping (optional)
         if: ${{ github.event.inputs.gsi_url != '' }}
         run: |
-          set +e
+          # Deliberately NOT `set +e` for the final check: this step's own conclusion
+          # (success/failure, visible via the Jobs API without needing log/artifact
+          # access) is how cause #1 (crash-database.md#5) gets verified. Only the
+          # download/extraction prep is best-effort.
           cd work
           URL='${{ github.event.inputs.gsi_url }}'
-          wget --tries=3 --timeout=120 --no-verbose -O gsi.src "$URL"
+          wget --tries=3 --timeout=180 --no-verbose -O gsi.src "$URL" || { echo "::error::download failed"; exit 1; }
           t="$(file -b gsi.src)"
-          if echo "$t" | grep -qi 'XZ';   then xz   -dc gsi.src > gsi.img
+          echo "downloaded type: $t"
+          if echo "$t" | grep -qi 'Zip archive'; then
+            unzip -o gsi.src -d gsi_extract >/dev/null
+            IMG="$(find gsi_extract -iname 'system.img' | head -1)"
+            [ -z "$IMG" ] && IMG="$(find gsi_extract -iname '*.img' | head -1)"
+            [ -z "$IMG" ] && { echo "::error::no .img found inside the zip"; unzip -l gsi.src; exit 1; }
+            cp "$IMG" gsi.img
+            rm -rf gsi_extract
+          elif echo "$t" | grep -qi 'XZ'; then xz -dc gsi.src > gsi.img
           elif echo "$t" | grep -qi 'gzip'; then gzip -dc gsi.src > gsi.img
-          else cp gsi.src gsi.img; fi
+          else cp gsi.src gsi.img
+          fi
           rm -f gsi.src
+          echo "gsi.img: $(du -h gsi.img | cut -f1)  type: $(file -b gsi.img)"
           VERS=$(grep -oE 'plat_sepolicy_vers.txt: [0-9.]+' vendor-sepolicy-report.txt | cut -d' ' -f2)
           echo "checking mapping for vendor version: $VERS"
+          set -o pipefail
           python3 ../kit/tools/check_sepolicy_mapping.py "$VERS" gsi.img | tee sepolicy-mapping-check.txt
           rm -f gsi.img
 
