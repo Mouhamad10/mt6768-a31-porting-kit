@@ -63,6 +63,46 @@ Feed a kernel log (text or a binary ramoops/pmsg dump) to
 signatures and tells you which fault fired and where its fix is documented. See
 [`bring-up/boot-log-signatures.md`](bring-up/boot-log-signatures.md).
 
+## Activity log
+
+Dated entries for runs done *on the repo owner's behalf, using their vendor/GSI and their
+authorization* - not every commit, just end-to-end tool runs worth a record of what was tested
+and what the result actually was.
+
+### 2026-11-25 — Android 16 GSI vs the lumi vendor: cause #1 checked, a full port run end-to-end
+
+Two things, both against the official Google AOSP ARM64 GSI
+(`aosp_arm64-exp-BP2A.250605.031.A3-13578795-82277143.zip`, Android 16 QPR1, no GMS) and the same
+`vendor_a31_lumi.img` from [`oneos-a31` release `vendor-lumi-ext4-v1`](https://github.com/Mouhamad10/oneos-a31/releases/tag/vendor-lumi-ext4-v1)
+used throughout [`crash-database.md#5`](bring-up/crash-database.md):
+
+1. **Fixed `patch-vendor.yml` first** - its GSI-mapping-check step couldn't handle a `.zip` GSI
+   (Google ships GSIs that way; the step only handled `.xz`/`.gz`/raw) and swallowed the mapping
+   check's own exit code with `set +e`, so a missing-mapping failure would have silently shown as
+   "success". Added zip extraction and `set -o pipefail`, so the step's own conclusion now *is*
+   the mapping verdict.
+2. **Ran `patch-vendor.yml`** with that GSI as `gsi_url`:
+   [run 45768318966](https://github.com/Mouhamad10/mt6768-a31-porting-kit/actions/runs/45768318966) -
+   every step succeeded, **including** "Download GSI and check sepolicy mapping", which means
+   `tools/check_sepolicy_mapping.py` exited 0: **this GSI's `/etc/selinux/mapping/` still ships
+   `31.0.cil`**, matching the vendor's `plat_sepolicy_vers.txt=31.0`. Cause #1 (sepolicy
+   mapping-version gap) is **ruled out** for this specific vendor+GSI pairing - confirmed by the
+   step's own conclusion, not by reading its log (log/artifact content isn't reachable from every
+   environment that might run this check; the step conclusion is).
+3. **Ran `gsi-port.yml`** on the same GSI as an actual port, not just the mapping check:
+   [run 45768321305](https://github.com/Mouhamad10/mt6768-a31-porting-kit/actions/runs/45768321305) -
+   every step succeeded end-to-end (download, normalize to raw ext4, apply the A31 system recipe,
+   shrink/repack, assemble the flashing kit), producing the `a31-ported-gsi` artifact (~986 MB).
+
+**What this does and does not prove:** the pipeline runs clean and cause #1 is cleared for this
+GSI - that's real signal, worth having before spending a flash cycle on it. It is **not** a
+confirmed boot on real hardware; nobody has flashed this exact output yet. If it still doesn't
+boot, the mapping gap (cause #1) and the stale `product` fstab entry (cause #2, already fixed by
+`tools/patch_vendor_fstab.sh` / the TWRP zip in [`flashable/`](flashable/)) are both now ruled
+out or fixed, so the next failure would be a genuinely new fault - worth a fresh
+`console-ramoops` capture and a `tools/triage-bootlog.py` run rather than re-suspecting either of
+these two.
+
 ## Getting started
 
 New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the repo is, every feature, and exactly how to run the three GitHub Actions.
