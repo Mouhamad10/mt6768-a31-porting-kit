@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Opt-in EROFS rebuild restricted to standard LZ4 or no compression."""
-import argparse,json,pathlib,shutil,subprocess,hashlib,sys,tempfile
+import argparse,json,pathlib,shutil,subprocess,hashlib,sys,tempfile,os
 def sha(p):
  h=hashlib.sha256()
  with open(p,'rb') as f:
@@ -14,7 +14,7 @@ def rebuild(tree,out,compression):
  tool=shutil.which('mkfs.erofs')
  if not tool:raise RuntimeError('mkfs.erofs not found')
  out.parent.mkdir(parents=True,exist_ok=True)
- fd,tmp=tempfile.mkstemp(prefix='.erofs-build-',suffix='.img',dir=out.parent);pathlib.Path(tmp).unlink();tmp=pathlib.Path(tmp)
+ fd,tmp=tempfile.mkstemp(prefix='.erofs-build-',suffix='.img',dir=out.parent);os.close(fd);pathlib.Path(tmp).unlink();tmp=pathlib.Path(tmp)
  try:
   cmd=[tool]
   if compression=='lz4':cmd+=['-zlz4']
