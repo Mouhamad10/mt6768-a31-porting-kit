@@ -45,7 +45,8 @@ def archive_listing(p):
       try:record['size']=int(line[7:])
       except ValueError:record['size']=None
     if record.get('name') and record.get('type') != '7z':
-     record.pop('type',None)\n     records.append(record)
+     record.pop('type',None)
+     records.append(record)
    names=records
  except Exception as e:return {'error':str(e)}
  return names
