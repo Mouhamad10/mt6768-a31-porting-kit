@@ -41,7 +41,7 @@ class ExtractTests(unittest.TestCase):
  def test_7z_stream_selection_mocked(self):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);src=root/'archive.7z';src.write_bytes(b'fake')
-   listing='\nType = 7z\n\nPath = archive.7z\n\nPath = system.img\nSize = 3\nFolder = -\n\n'
+   listing='Type = 7z\n\nPath = archive.7z\n\nPath = system.img\nSize = 3\nFolder = -\n\n'
    proc=type('Proc',(),{'stdout':io.BytesIO(b'abc'),'wait':lambda self:0,'kill':lambda self:None})()
    with patch('tools.gsi_extract.zipfile.is_zipfile',return_value=False),patch('tools.gsi_extract.tarfile.is_tarfile',return_value=False),patch('tools.gsi_extract.shutil.which',return_value='/fake/7z'),patch('tools.gsi_extract.subprocess.run',return_value=type('R',(),{'returncode':0,'stdout':listing})()),patch('tools.gsi_extract.subprocess.Popen',return_value=proc):
     r=normalize(src,root/'out',100)
