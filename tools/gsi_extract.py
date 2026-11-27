@@ -24,6 +24,16 @@ def copy_stream_bounded(src,dst,limit=MAX_BYTES):
  return total
 def bounded_copy(src,dst,limit=MAX_BYTES):
  with open(src,'rb') as i:return copy_stream_bounded(i,dst,limit)
+def is_tar_payload(src):
+ p=pathlib.Path(src)
+ if p.stat().st_size<262:return False
+ with p.open('rb') as f:
+  f.seek(257)
+  return f.read(5)==b'ustar'
+def is_7z(src):
+ if not shutil.which('7z'):return False
+ r=subprocess.run(['7z','l','-slt',str(src)],capture_output=True,text=True)
+ return r.returncode==0 and 'Type = 7z' in r.stdout
 def archive_member(src,dst,limit=MAX_BYTES):
  if zipfile.is_zipfile(src):
   with zipfile.ZipFile(src) as z:
@@ -34,7 +44,7 @@ def archive_member(src,dst,limit=MAX_BYTES):
    if info.file_size>limit:raise ValueError('archive member exceeds size limit')
    with z.open(info) as i:copy_stream_bounded(i,dst,limit)
    return name
- if tarfile.is_tarfile(src):
+ if is_tar_payload(src):
   with tarfile.open(src,'r:*') as t:
    infos=[m for m in t.getmembers() if m.isfile()];name=choose([m.name for m in infos])
    matches=[m for m in infos if m.name==name]
@@ -55,7 +65,7 @@ def archive_member(src,dst,limit=MAX_BYTES):
     elif ' = ' in line:
      k,v=line.split(' = ',1);record[k]=v
    if record:records.append(record)
-   files=[r for r in records if r.get('Folder')!='+' and r.get('Path') and r.get('Size','').isdigit()]
+   files=[r for r in records if r.get('Folder')!='+' and r.get('Path') and r.get('Size','').isdigit() and r.get('Path')!=str(src)]
    name=choose([r['Path'] for r in files])
    matches=[r for r in files if r.get('Path')==name]
    if len(matches)!=1:raise ValueError('ambiguous or duplicate 7z member')
@@ -98,9 +108,9 @@ def normalize(src,outdir,limit=MAX_BYTES):
  outdir.mkdir(parents=True,exist_ok=True);final=outdir/'system.img';report_path=outdir/'extract-report.json'
  work=pathlib.Path(tempfile.mkdtemp(prefix='.gsi-extract-',dir=outdir));current=work/'payload';member=None;steps=[]
  try:
-  if zipfile.is_zipfile(src) or tarfile.is_tarfile(src):
+  if zipfile.is_zipfile(src) or is_tar_payload(src):
    member=archive_member(src,current,limit)
-  elif shutil.which('7z') and subprocess.run(['7z','l','-slt',str(src)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0:
+  elif is_7z(src):
    member=archive_member(src,current,limit)
   else:bounded_copy(src,current,limit)
   for idx in range(MAX_STEPS):
