@@ -7,10 +7,10 @@ and the original input is never modified.
 """
 import argparse, gzip, hashlib, json, lzma, pathlib, shutil, subprocess, sys, tarfile, zipfile
 
-try:\n from .gsi_prepare import choose, fs_type\nexcept ImportError:\n from gsi_prepare import choose, fs_type
-
-def sha256(p):
- h=hashlib.sha256()
+try:
+ from .gsi_prepare import choose, fs_type
+except ImportError:
+ from gsi_prepare import choose, fs_type
  with open(p,'rb') as f:
   for chunk in iter(lambda:f.read(1024*1024),b''): h.update(chunk)
  return h.hexdigest()
@@ -56,10 +56,10 @@ def normalize(src, outdir):
  for idx in range(10):
   with current.open('rb') as f: h=f.read(8)
   nxt=work/f'normalized_{idx}'
-  if h.startswith(b'\\xfd7zXZ\\x00'): 
+  if h.startswith(b'\xfd7zXZ\x00'): 
    with lzma.open(current) as i,nxt.open('wb') as o: shutil.copyfileobj(i,o)
    steps.append('xz')
-  elif h.startswith(b'\\x1f\\x8b'):
+  elif h.startswith(b'\x1f\x8b'):
    with gzip.open(current) as i,nxt.open('wb') as o: shutil.copyfileobj(i,o)
    steps.append('gzip')
   elif h[:4]==bytes.fromhex('3aff26ed'):
