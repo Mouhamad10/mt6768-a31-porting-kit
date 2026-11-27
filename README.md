@@ -129,3 +129,12 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 - Documented transferable engineering primitives (staged pipeline, profile-driven processing, filesystem detection/extraction/build, reproducible logs) and Samsung-specific steps that must not be copied blindly into a GSI workflow.
 - Added [`docs/quantumrom-method-review.md`](docs/quantumrom-method-review.md) with verified findings and a proposed diagnostic-first port-engine architecture.
 - QuantumROM is a Samsung firmware/custom-ROM builder; the inspected source does not establish arbitrary GSI porting or boot validation, so the kit will adapt reusable filesystem/pipeline techniques rather than claim equivalence.
+
+
+### 2026-11-27 — first diagnostic analyzer stage
+
+- Added `tools/gsi_analyze.py`: read-only signature identification for Android sparse, ext4, EROFS, F2FS, XZ, gzip, LZ4, ZIP and TAR, archive listing where supported, SHA-256, candidate system image listing, and a JSON report explicitly marking compatibility and boot validation as unassessed.
+- Added signature tests and a dedicated CI workflow for tests plus CLI smoke testing.
+- Smoke-checked the four filesystem/image signatures (sparse, ext4, EROFS, F2FS) against synthetic byte fixtures in this session. This does **not** yet prove the GitHub workflow executed or test real images.
+- Fixed TAR signature detection to inspect the TAR magic offset rather than the initial header bytes.
+- Next: implement actual extraction backends, sparse conversion and safe archive-member handling, then image-level diagnostics and an audited recipe.
