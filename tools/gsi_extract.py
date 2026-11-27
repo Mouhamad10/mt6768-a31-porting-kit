@@ -43,7 +43,7 @@ def archive_member(src,dst,limit=MAX_BYTES):
    if m.size>limit:raise ValueError('archive member exceeds size limit')
    i=t.extractfile(m)
    if i is None:raise ValueError('cannot read selected member')
-   with i:copy_stream_bounded(i,dst)
+   with i:copy_stream_bounded(i,dst,limit)
    return name
  raise ValueError('unsupported archive')
 def run_bounded(cmd,dst,limit=MAX_BYTES):
