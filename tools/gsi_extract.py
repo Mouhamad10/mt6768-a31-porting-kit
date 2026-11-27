@@ -88,7 +88,8 @@ def normalize(src,outdir):
    elif h[:4]==bytes.fromhex('3aff26ed'):
     sparse_size(current)
     if not shutil.which('simg2img'):raise RuntimeError('simg2img unavailable')
-    subprocess.run(['simg2img',str(current),str(nxt)],check=True)\n    if nxt.stat().st_size>MAX_BYTES:raise ValueError('payload exceeds extraction size limit')
+    subprocess.run(['simg2img',str(current),str(nxt)],check=True)
+    if nxt.stat().st_size>MAX_BYTES:raise ValueError('payload exceeds extraction size limit')
     label='sparse_to_raw'
    elif h[:4]==bytes.fromhex('04224d18'):
     if not shutil.which('lz4'):raise RuntimeError('lz4 unavailable')
