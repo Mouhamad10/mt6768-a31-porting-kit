@@ -49,7 +49,8 @@ jobs:
           mkdir -p work/dist
           split -b 1900M -d work/system.img "work/dist/${OUT}.img.part."
           printf 'Detected FS: %s\nRequested density: %s\nRecipe status: pending verified A31-specific recipe\nDevice boot status: not tested\n' "$(cat work/fs.txt)" "${{ github.event.inputs.lcd_density }}" > work/dist/PORT-STATUS.txt
-          cp work/source.sha256 work/system.sha256 work/dist/\n          cp work/dist-extract-report.json work/dist/extract-report.json
+          cp work/source.sha256 work/system.sha256 work/dist/
+          cp work/dist-extract-report.json work/dist/extract-report.json
           cat > work/dist/HOW-TO-REJOIN.txt <<EOF
           Rejoin: cat ${OUT}.img.part.* > system.img
           The pipeline normalizes and packages; it does not claim a device-tested port.
