@@ -21,6 +21,6 @@ class AnalyzerTests(unittest.TestCase):
  def test_7z_listing(self):
   with tempfile.TemporaryDirectory() as d:
    p=pathlib.Path(d)/'archive.7z';p.write_bytes(bytes.fromhex('377abcaf271c')+bytes(20))
-   output='\\n'.join(['Type = 7z','','Path = archive.7z','','Path = system.img','Size = 123','Folder = -','','Path = vendor.img','Size = 456','Folder = -',''])
+   output='\n'.join(['Type = 7z','','Path = archive.7z','','Path = system.img','Size = 123','Folder = -','','Path = vendor.img','Size = 456','Folder = -',''])
    with patch('tools.gsi_analyze.shutil_7z',return_value=True), patch('tools.gsi_analyze.subprocess.run',return_value=type('R',(),{'stdout':output})()):
     self.assertEqual(archive_listing(p),[{'name':'system.img','size':123},{'name':'vendor.img','size':456}])
