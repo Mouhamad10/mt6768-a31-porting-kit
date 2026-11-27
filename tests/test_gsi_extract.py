@@ -1,6 +1,6 @@
 import gzip, pathlib, tempfile, zipfile, unittest, lzma
 from unittest.mock import patch
-from tools.gsi_extract import normalize, MAX_BYTES
+from tools.gsi_extract import normalize, MAX_BYTES, sparse_size
 
 class ExtractTests(unittest.TestCase):
  def payload(self):
@@ -45,7 +45,7 @@ class ExtractTests(unittest.TestCase):
    with patch('tools.gsi_extract.MAX_BYTES',16):
     with self.assertRaises(ValueError):normalize(s,root/'out')
    self.assertFalse((root/'out/.work').exists())
- def test_duplicate_zip_member_rejected(self):
+ def test_input_inside_output_tree_rejected(self):\n  with tempfile.TemporaryDirectory() as d:\n   root=pathlib.Path(d);out=root/'out';out.mkdir();s=out/'source';s.write_bytes(b'abc')\n   with self.assertRaises(ValueError):normalize(s,out)\n def test_sparse_declared_size_limit(self):\n  with tempfile.TemporaryDirectory() as d:\n   p=pathlib.Path(d)/'sparse';h=bytearray(28);h[:4]=bytes.fromhex('3aff26ed');h[12:16]=(4096).to_bytes(4,'little');h[16:20]=(10).to_bytes(4,'little');p.write_bytes(h)\n   with patch('tools.gsi_extract.MAX_BYTES',100):\n    with self.assertRaises(ValueError):sparse_size(p)\n def test_duplicate_zip_member_rejected(self):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);s=root/'dup.zip'
    with zipfile.ZipFile(s,'w') as z:
