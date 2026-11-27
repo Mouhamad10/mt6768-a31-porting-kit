@@ -7,7 +7,7 @@ and the original input is never modified.
 """
 import argparse, gzip, hashlib, json, lzma, pathlib, shutil, subprocess, sys, tarfile, zipfile
 
-from gsi_prepare import choose, fs_type
+try:\n from .gsi_prepare import choose, fs_type\nexcept ImportError:\n from gsi_prepare import choose, fs_type
 
 def sha256(p):
  h=hashlib.sha256()
