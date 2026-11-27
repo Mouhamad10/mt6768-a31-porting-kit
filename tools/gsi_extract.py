@@ -67,8 +67,9 @@ def sparse_size(p,limit=MAX_BYTES):
  size=int.from_bytes(h[12:16],'little')*int.from_bytes(h[16:20],'little')
  if size>limit:raise ValueError('sparse image declared expanded size exceeds limit')
  return size
-def normalize(src,outdir):
- src=pathlib.Path(src).resolve();outdir=pathlib.Path(outdir).resolve()\n if limit<=0:raise ValueError('limit must be positive')
+def normalize(src,outdir,limit=MAX_BYTES):
+ src=pathlib.Path(src).resolve();outdir=pathlib.Path(outdir).resolve()
+ if limit<=0:raise ValueError('limit must be positive')
  if not src.is_file():raise ValueError('input is not a file')
  if outdir==src or src in outdir.parents:raise ValueError('output directory must not contain input')
  outdir.mkdir(parents=True,exist_ok=True);final=outdir/'system.img';report_path=outdir/'extract-report.json'
