@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Evidence-first GSI image analyzer. Does not modify input or claim device compatibility."""
-import argparse, hashlib, json, os, pathlib, struct, subprocess, tarfile, zipfile
+import argparse, hashlib, json, pathlib, subprocess, tarfile, zipfile
 
 def sha256(path):
  h=hashlib.sha256()
@@ -27,7 +27,7 @@ def detect(path):
   if head[:2]==b'\x1f\x8b':return 'gzip'
   if head[:4]==bytes.fromhex('04224d18'):return 'lz4'
   if head[:4]==b'PK\x03\x04':return 'zip'
-  if head[:4]==b'ustar' or (size>262 and head[257:262]==b'ustar'):return 'tar'
+  if size>262:\n   f.seek(257)\n   if f.read(5)==b'ustar':return 'tar'
  return 'unknown'
 
 def archive_listing(p):
