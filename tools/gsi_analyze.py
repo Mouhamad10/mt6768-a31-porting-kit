@@ -39,11 +39,13 @@ def archive_listing(p):
    for block in result.stdout.split('\n\n'):
     record={}
     for line in block.splitlines():
-     if line.startswith('Path = '):record['name']=line[7:]\n     elif line.startswith('Type = '):record['type']=line[7:]
+     if line.startswith('Path = '):record['name']=line[7:]
+     elif line.startswith('Type = '):record['type']=line[7:]
      elif line.startswith('Size = '):
       try:record['size']=int(line[7:])
       except ValueError:record['size']=None
-    if record.get('name') and record.get('type') != '7z':\n     record.pop('type',None)\n     records.append(record)
+    if record.get('name') and record.get('type') != '7z':
+     record.pop('type',None)\n     records.append(record)
    names=records
  except Exception as e:return {'error':str(e)}
  return names
