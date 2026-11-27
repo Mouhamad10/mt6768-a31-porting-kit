@@ -21,7 +21,7 @@ def normalize(src,dst):
    with z.open(n) as inp,cur.open('wb') as out: shutil.copyfileobj(inp,out)
  else: shutil.copyfile(src,cur)
  for _ in range(6):
-  head=cur.read_bytes()[:8]; nxt=w/'unpacked'
+  with cur.open('rb') as stream: head=stream.read(8)\n  nxt=w/'unpacked'
   if head.startswith(b'\xfd7zXZ\x00'):
    with lzma.open(cur) as inp,nxt.open('wb') as out: shutil.copyfileobj(inp,out)
   elif head.startswith(b'\x1f\x8b'):
