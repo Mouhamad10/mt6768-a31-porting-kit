@@ -18,6 +18,7 @@ def detect(path):
   f.seek(1024);f2=f.read(4)
   if f2==bytes.fromhex('1020f5f2'):return 'f2fs'
   if head[:6]==b'\xfd7zXZ\x00':return 'xz'
+  if head[:6]==bytes.fromhex('377abcaf271c'):return '7z'
   if head[:2]==b'\x1f\x8b':return 'gzip'
   if head[:4]==bytes.fromhex('04224d18'):return 'lz4'
   if head[:4]==b'PK\x03\x04':return 'zip'
@@ -32,7 +33,7 @@ def archive_listing(p):
    with zipfile.ZipFile(p) as z:names=[{'name':i.filename,'size':i.file_size} for i in z.infolist() if not i.is_dir()]
   elif tarfile.is_tarfile(p):
    with tarfile.open(p) as t:names=[{'name':i.name,'size':i.size} for i in t.getmembers() if i.isfile()]
-  elif shutil_7z(p):
+  elif detect(p)=='7z' and shutil_7z(p):
    result=subprocess.run(['7z','l','-slt',str(p)],capture_output=True,text=True,check=True)
    records=[]
    for block in result.stdout.split('\\n\\n'):
@@ -51,7 +52,7 @@ def shutil_7z(p):
  return bool(shutil.which('7z'))
 def main():
  ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('input');ap.add_argument('--json',dest='out');a=ap.parse_args()
- p=pathlib.Path(a.input);typ=detect(p);listing=archive_listing(p) if typ in ('zip','tar') or (typ=='unknown' and shutil_7z(p)) else []
+ p=pathlib.Path(a.input);typ=detect(p);listing=archive_listing(p) if typ in ('zip','tar','7z') else []
  candidates=[]
  for item in listing:
   n=item['name'];base=pathlib.PurePosixPath(n).name.lower()
