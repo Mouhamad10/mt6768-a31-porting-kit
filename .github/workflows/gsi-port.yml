@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p work/extract
-          python3 tools/gsi_extract.py work/source work/extract | tee work/extract-report.stdout.json
+          python3 tools/gsi_extract.py work/source work/extract --max-bytes "${{ github.event.inputs.max_bytes }}" | tee work/extract-report.stdout.json
           cp work/extract/system.img work/system.img
           test -s work/system.img
           python3 -c 'import json; r=json.load(open("work/extract/extract-report.json")); print("Filesystem:",r["filesystem_hint"])' | tee work/fs.txt
