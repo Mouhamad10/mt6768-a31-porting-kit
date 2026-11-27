@@ -38,4 +38,4 @@ def inspect(image):
 if __name__=='__main__':
  a=argparse.ArgumentParser(description=__doc__);a.add_argument('image');a.add_argument('--json');args=a.parse_args()
  r=inspect(args.image);text=json.dumps(r,indent=2);print(text)
- if args.json:pathlib.Path(args.json).write_text(text+'\\n')
+ if args.json:pathlib.Path(args.json).write_text(text+'\n')
