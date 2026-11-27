@@ -30,9 +30,9 @@ class ExtractTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);s=root/'input';s.write_bytes(b'a'*32)
    with patch('tools.gsi_extract.MAX_BYTES',16):
-    with self.assertRaises(ValueError):normalize(s,root/'out')
+    with self.assertRaises(ValueError):normalize(s,root/'out',16)
    self.assertFalse(any(x.name.startswith('.gsi-extract-') for x in (root/'out').iterdir()))
- def test_input_inside_output_tree_rejected(self):
+ def test_configurable_limit_accepts_larger_payload(self):\n  with tempfile.TemporaryDirectory() as d:\n   root=pathlib.Path(d);s=root/'input';s.write_bytes(b'a'*32);r=normalize(s,root/'out',64)\n   self.assertEqual(r['size_limit_bytes'],64)\n def test_input_inside_output_tree_rejected(self):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);out=root/'out';out.mkdir();s=out/'source';s.write_bytes(b'abc')
    with self.assertRaises(ValueError):normalize(s,out)
