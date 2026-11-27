@@ -148,3 +148,11 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 - Added a documented reversible-recipe format; recipes are review/dry-run-first and not automatically applied.
 - Added opt-in EROFS rebuild CLI restricted to standard LZ4 compression (`-zlz4`) or uncompressed output. LZ4HC and advanced EROFS features are excluded. Output hash/size and available fsck result are recorded; no boot claim.
 - **Validation caveat:** these are newly committed foundations; runtime tests and actual device boot are not yet verified.
+
+
+### 2026-11-27 — focused regression coverage and safety hardening
+
+- Added tests for archive inventory, layout-reference scanning, compatibility-report honesty, and rebuild-tool absence handling.
+- Fixed module-relative import handling in the A31 compatibility report.
+- EROFS rebuild now refuses an output path inside the source tree and fails if an available fsck.erofs reports validation failure. Compression choices remain strictly standard LZ4 or uncompressed.
+- Test execution/CI results remain pending confirmation from Actions.
