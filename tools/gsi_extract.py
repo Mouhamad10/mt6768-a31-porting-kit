@@ -57,7 +57,7 @@ def run_bounded(cmd,dst,limit=MAX_BYTES):
     total+=len(b)
     if total>limit:raise ValueError('payload exceeds extraction size limit')
     out.write(b)
-  err=p.stderr.read();rc=p.wait()
+  rc=p.wait()
   if rc:raise RuntimeError(cmd[0]+' failed: '+err.decode(errors='replace')[-2000:])
  except Exception:
   p.kill();p.wait();pathlib.Path(dst).unlink(missing_ok=True);raise
