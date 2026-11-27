@@ -11,6 +11,9 @@ name: Port GSI for A31 (SM-A315F)
 # are proven on-device; see docs/06-gsi-porting.md.
 
 on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/gsi-port.yml]
   workflow_dispatch:
     inputs:
       gsi_url:
@@ -54,7 +57,7 @@ jobs:
         run: |
           set -e
           mkdir -p work && cd work
-          URL='${{ github.event.inputs.gsi_url }}'
+          URL='${{ github.event.inputs.gsi_url || 'https://altushost-swe.dl.sourceforge.net/project/mystic-gsi-updates/ColorOS/Coloros-OP5D77L1-14-1716613929462-AB-20260224-MysticGSI.zip?viasf=1&fid=4abd755aa983adfc&e=1795882397&st=tqK9fundeDJsKREdLkxeXA' }}'
           echo "Fetching (not printing the URL/token)..."
           wget --tries=3 --timeout=120 --no-verbose -O gsi.src "$URL"
           ls -lh gsi.src; echo "type: $(file -b gsi.src)"
@@ -109,7 +112,7 @@ jobs:
             echo "::warning::rw mount failed - editing skipped, will still shrink/repack"; fi
           echo "root entries:"; sudo ls sysroot | head
           if grep -q "SRC=mount$" src.txt; then
-            D='${{ github.event.inputs.lcd_density }}'
+            D='${{ github.event.inputs.lcd_density || '420' }}'
             for f in $(sudo find sysroot -maxdepth 3 -name build.prop 2>/dev/null); do
               if ! sudo grep -q "A31 (SM-A315F) port" "$f"; then
                 echo "inject A31 props -> $f"
@@ -127,8 +130,8 @@ jobs:
         run: |
           set -e
           cd work
-          OUT="system-a31-${{ github.event.inputs.label }}"
-          FMT='${{ github.event.inputs.output_format }}'
+          OUT="system-a31-${{ github.event.inputs.label || 'ColorOS-A31' }}"
+          FMT='${{ github.event.inputs.output_format || 'erofs' }}'
           if grep -q "SRC=image" src.txt; then
             cp system.raw "$OUT.img"
           elif [ "$FMT" = "erofs" ]; then
