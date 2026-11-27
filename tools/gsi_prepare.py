@@ -39,9 +39,9 @@ def normalize(src,dst):
  for idx in range(8):
   with cur.open('rb') as f:head=f.read(8)
   nxt=w/f'unpacked_{idx}'
-  if head.startswith(b'\\xfd7zXZ\\x00'):
+  if head.startswith(b'\xfd7zXZ\x00'):
    with lzma.open(cur) as i,nxt.open('wb') as o:shutil.copyfileobj(i,o)
-  elif head.startswith(b'\\x1f\\x8b'):
+  elif head.startswith(b'\x1f\x8b'):
    with gzip.open(cur) as i,nxt.open('wb') as o:shutil.copyfileobj(i,o)
   elif head[:4]==bytes.fromhex('3aff26ed'):
    if not shutil.which('simg2img'):raise RuntimeError('simg2img missing')
