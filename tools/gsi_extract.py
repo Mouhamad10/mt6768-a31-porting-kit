@@ -47,12 +47,20 @@ def archive_member(src,dst):
    return name
  raise ValueError('unsupported archive')
 def run_bounded(cmd,dst,limit=MAX_BYTES):
- with open(dst,'wb') as out:
-  p=subprocess.Popen(cmd,stdout=out,stderr=subprocess.PIPE)
-  err=p.communicate()[1]
-  if p.returncode:raise RuntimeError(cmd[0]+' failed: '+err.decode(errors='replace')[-2000:])
- if pathlib.Path(dst).stat().st_size>limit:
-  pathlib.Path(dst).unlink(missing_ok=True);raise ValueError('payload exceeds extraction size limit')
+ p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ try:
+  with open(dst,'wb') as out:
+   total=0
+   while True:
+    b=p.stdout.read(1024*1024)
+    if not b:break
+    total+=len(b)
+    if total>limit:raise ValueError('payload exceeds extraction size limit')
+    out.write(b)
+  err=p.stderr.read();rc=p.wait()
+  if rc:raise RuntimeError(cmd[0]+' failed: '+err.decode(errors='replace')[-2000:])
+ except Exception:
+  p.kill();p.wait();pathlib.Path(dst).unlink(missing_ok=True);raise
 def sparse_size(p):
  with open(p,'rb') as f:h=f.read(28)
  if len(h)<28 or h[:4]!=bytes.fromhex('3aff26ed'):return None
