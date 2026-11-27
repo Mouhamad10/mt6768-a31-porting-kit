@@ -12,7 +12,18 @@ jobs:
       - name: Install image tooling
         run: sudo apt-get update && sudo apt-get install -y android-sdk-libsparse-utils xz-utils lz4 p7zip-full file e2fsprogs erofs-utils f2fs-tools
       - name: Unit tests
-        run: python3 -m unittest discover -s tests -v\n      - name: Filesystem inspector smoke test\n        run: |\n          python3 - <<'PY'\n          import tempfile, pathlib, json\n          from tools.gsi_fs_inspect import inspect\n          p=pathlib.Path('unknown.img'); p.write_bytes(b'unknown')\n          x=inspect(p); assert x['filesystem']=='unknown' and x['compatibility']=='not_assessed'\n          p.unlink()\n          PY
+        run: python3 -m unittest discover -s tests -v
+      - name: Filesystem inspector smoke test
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          from tools.gsi_fs_inspect import inspect
+          p=pathlib.Path('unknown.img')
+          p.write_bytes(b'unknown')
+          x=inspect(p)
+          assert x['filesystem']=='unknown' and x['compatibility']=='not_assessed'
+          p.unlink()
+          PY
       - name: Analyzer CLI smoke test
         run: |
           printf 'not an image' > sample.bin
