@@ -106,3 +106,18 @@ these two.
 ## Getting started
 
 New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the repo is, every feature, and exactly how to run the three GitHub Actions.
+
+
+## GSI Port Engine development log
+
+### 2026-11-27 — permissive GSI intake foundation (MT6768 / Helio P65 / Galaxy A31 SM-A315F)
+
+- Reworked the GSI Action to accept direct image and archive URLs and preserve the payload if normalization or filesystem recognition is not possible.
+- Added an intake/normalization helper for ZIP, 7z (when available), XZ, gzip, LZ4, and Android sparse images.
+- ZIP/7z member selection prefers a recognizable system image name; if none is found, it falls back to a candidate instead of blocking the run.
+- Outputs include source and normalized SHA256, split image chunks, and a status file.
+- No porting success or boot compatibility is asserted: device-specific modifications are a work-in-progress and require verified tests.
+
+**Next ideas:** build a filesystem-aware editing stage (ext4/EROFS), collect and index A31/A41 crash logs and console/pmsg/ramoops traces, add reproducible fixes with test cases, compare approaches from established GSI port workflows (including Cantium references once the exact source is identified), implement density/overlay/property and compatibility changes with audit logs, then run CI validation and device testing.
+
+**Current scope:** intake and packaging foundation only. It does not yet perform a proven A31-specific ROM port or guarantee boot.
