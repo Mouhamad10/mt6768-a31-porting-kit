@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in EROFS rebuild with a strict standard-LZ4-only compression policy."""
+"""Opt-in EROFS rebuild restricted to standard LZ4 or no compression."""
 import argparse,json,pathlib,shutil,subprocess,hashlib,sys
 def sha(p):
  h=hashlib.sha256()
@@ -11,17 +11,18 @@ def rebuild(tree,out,compression):
  tool=shutil.which('mkfs.erofs')
  if not tool:raise RuntimeError('mkfs.erofs not found')
  if not tree.is_dir():raise ValueError('tree must be a directory')
+ if out==tree or tree in out.parents:raise ValueError('output must be outside the source tree')
  out.parent.mkdir(parents=True,exist_ok=True)
  cmd=[tool]
  if compression=='lz4':cmd+=['-zlz4']
  cmd+=[str(out),str(tree)]
  subprocess.run(cmd,check=True)
- check=shutil.which('fsck.erofs')
- validation='not_available'
+ check=shutil.which('fsck.erofs');validation={'available':bool(check),'returncode':None,'stdout':'','stderr':''}
  if check:
   r=subprocess.run([check,'--check',str(out)],capture_output=True,text=True)
-  validation={'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}
- report={'tree':str(tree),'output':str(out),'compression':compression,'policy':'standard LZ4 only or uncompressed; advanced features prohibited','size_bytes':out.stat().st_size,'sha256':sha(out),'fsck_erofs':validation,'boot_test':'not_performed'}
+  validation.update({'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr})
+  if r.returncode:raise RuntimeError('fsck.erofs validation failed; see stderr')
+ report={'tree':str(tree),'output':str(out),'compression':compression,'policy':'standard LZ4 only (-zlz4) or uncompressed; advanced features prohibited','size_bytes':out.stat().st_size,'sha256':sha(out),'fsck_erofs':validation,'boot_test':'not_performed'}
  out.with_suffix(out.suffix+'.report.json').write_text(json.dumps(report,indent=2)+'\n')
  return report
 if __name__=='__main__':
