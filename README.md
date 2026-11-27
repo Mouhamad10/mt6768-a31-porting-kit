@@ -184,3 +184,9 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 - Routed the manual GSI port workflow through `gsi_extract.py` rather than the older permissive intake normalizer; its provenance report is included with the packaged output.
 - The current bounded extractor handles raw payloads, ZIP/TAR-selected payloads, gzip/XZ, LZ4 and sparse conversion when tools are present. **7z archives are not currently supported by this workflow path**; unsupported intake now fails rather than silently copying an unnormalized archive as `system.img`.
 - GitHub Actions should execute the test suite on this push; execution results are not yet verified from this session.
+
+
+### 2026-11-27 — configurable expanded-image limit
+
+- The extraction ceiling is configurable instead of fixed: the CLI accepts `--max-bytes`; the manual GSI workflow exposes `max_bytes` with an 8 GiB default (8589934592 bytes). Users can raise it for large payloads or lower it to constrain extraction. This ceiling applies to the expanded normalized payload, not the compressed download size.
+- Added regression coverage for choosing a ceiling that permits a larger payload and rejects a payload beyond the chosen ceiling. Test execution remains unverified.
