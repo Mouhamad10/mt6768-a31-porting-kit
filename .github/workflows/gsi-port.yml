@@ -59,10 +59,16 @@ jobs:
           mkdir -p work && cd work
           URL='${{ github.event.inputs.gsi_url || 'https://altushost-swe.dl.sourceforge.net/project/mystic-gsi-updates/ColorOS/Coloros-OP5D77L1-14-1716613929462-AB-20260224-MysticGSI.zip?viasf=1&fid=4abd755aa983adfc&e=1795882397&st=tqK9fundeDJsKREdLkxeXA' }}'
           echo "Fetching (not printing the URL/token)..."
-          wget --tries=3 --timeout=120 --no-verbose -O gsi.src "$URL"
+          # SourceForge mirror downloads can stall or return a temporary HTML page.
+          # Retry with explicit connection and overall timeouts; preserve diagnostics.
+          rm -f gsi.src
+          curl -fL --retry 8 --retry-all-errors --retry-delay 8 --connect-timeout 40 --max-time 1800 \
+            --progress-bar -o gsi.src "$URL"
+          test -s gsi.src
           ls -lh gsi.src; echo "type: $(file -b gsi.src)"
           if file gsi.src | grep -qiE 'HTML|ASCII text'; then
-            echo "::error::URL returned HTML/text, not an image - link may have expired."; head -c 400 gsi.src; exit 1
+            echo "::error::URL returned HTML/text, not a payload - possibly expired or throttled."
+            head -c 400 gsi.src; exit 1
           fi
 
       - name: Normalise to a raw ext4 image
@@ -168,7 +174,7 @@ jobs:
             Windows:    copy /b ${OUT}.img.part.00 + ${OUT}.img.part.01 system.img
 
           Then follow README.md (fastbootd -> disable vbmeta -> fastboot flash system system.img -> wipe data).
-          Format: $(cat fs.txt)  |  density injected: ${{ github.event.inputs.lcd_density }}
+          Format: $(cat fs.txt)  |  density injected: ${{ github.event.inputs.lcd_density || '420' }}
           EOF
           ls -lh dist/
           {
@@ -182,7 +188,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Mirror a direct link (GoFile)
-        if: ${{ github.event.inputs.mirror == 'true' }}
+        if: ${{ github.event.inputs.mirror == 'true' || github.event_name == 'push' }}
         run: |
           set +e
           cd work
