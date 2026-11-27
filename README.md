@@ -169,3 +169,11 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 - Fixed module-relative import handling in the A31 compatibility report.
 - EROFS rebuild now refuses an output path inside the source tree and fails if an available fsck.erofs reports validation failure. Compression choices remain strictly standard LZ4 or uncompressed.
 - Test execution/CI results remain pending confirmation from Actions.
+
+
+### 2026-11-27 — bounded extraction and staged EROFS rebuild hardening
+
+- Added streaming output bounds for external LZ4 and sparse-image converters; sparse headers are checked against the declared expanded size limit before conversion.
+- Normalized payloads are staged in a unique temporary workspace, and final image/report files are replaced only after image processing completes. Inputs inside the output directory are rejected.
+- EROFS builds now stage the output, validate compression and tree/output paths, run `fsck.erofs` when available, and preserve an existing output if validation fails.
+- Added regression coverage for path rejection, sparse-size checks, duplicate ZIP members, and staged EROFS validation. These tests are committed but have not yet been executed locally or confirmed in Actions.
