@@ -121,3 +121,11 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 **Next ideas:** build a filesystem-aware editing stage (ext4/EROFS), collect and index A31/A41 crash logs and console/pmsg/ramoops traces, add reproducible fixes with test cases, compare approaches from established GSI port workflows (including Cantium references once the exact source is identified), implement density/overlay/property and compatibility changes with audit logs, then run CI validation and device testing.
 
 **Current scope:** intake and packaging foundation only. It does not yet perform a proven A31-specific ROM port or guarantee boot.
+
+
+### 2026-11-27 — QuantumROM workflow study
+
+- Reviewed the upstream QuantumROM workflow and `scripts/QuantumRom.sh`.
+- Documented transferable engineering primitives (staged pipeline, profile-driven processing, filesystem detection/extraction/build, reproducible logs) and Samsung-specific steps that must not be copied blindly into a GSI workflow.
+- Added [`docs/quantumrom-method-review.md`](docs/quantumrom-method-review.md) with verified findings and a proposed diagnostic-first port-engine architecture.
+- QuantumROM is a Samsung firmware/custom-ROM builder; the inspected source does not establish arbitrary GSI porting or boot validation, so the kit will adapt reusable filesystem/pipeline techniques rather than claim equivalence.
