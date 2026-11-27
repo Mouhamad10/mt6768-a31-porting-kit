@@ -83,7 +83,7 @@ def normalize(src,outdir):
     with lzma.open(current,'rb') as op:copy_stream_bounded(op,nxt,limit)
     label='xz'
    elif h.startswith(b'\x1f\x8b'):
-    with gzip.open(current,'rb') as op:copy_stream_bounded(op,nxt)
+    with gzip.open(current,'rb') as op:copy_stream_bounded(op,nxt,limit)
     label='gzip'
    elif h[:4]==bytes.fromhex('3aff26ed'):
     sparse_size(current,limit)
@@ -93,18 +93,18 @@ def normalize(src,outdir):
     label='sparse_to_raw'
    elif h[:4]==bytes.fromhex('04224d18'):
     if not shutil.which('lz4'):raise RuntimeError('lz4 unavailable')
-    run_bounded(['lz4','-d','-c',str(current)],nxt)
+    run_bounded(['lz4','-d','-c',str(current)],nxt,limit)
     label='lz4'
    else:break
-   if nxt.stat().st_size>MAX_BYTES:raise ValueError('payload exceeds extraction size limit')
+   if nxt.stat().st_size>limit:raise ValueError('payload exceeds extraction size limit')
    steps.append(label);current=nxt
   else:raise ValueError('normalization exceeded maximum transformation count')
   staged=work/'system.img';bounded_copy(current,staged)
-  report={'source':str(src),'source_sha256':sha256(src),'selected_member':member,'transformations':steps,'output':str(final),'output_sha256':sha256(staged),'filesystem_hint':fs_type(staged),'extraction':'normalized_payload_only','filesystem_contents_extracted':False,'compatibility':'not_assessed','boot_test':'not_performed','size_limit_bytes':MAX_BYTES}
+  report={'source':str(src),'source_sha256':sha256(src),'selected_member':member,'transformations':steps,'output':str(final),'output_sha256':sha256(staged),'filesystem_hint':fs_type(staged),'extraction':'normalized_payload_only','filesystem_contents_extracted':False,'compatibility':'not_assessed','boot_test':'not_performed','size_limit_bytes':limit}
   staged.replace(final);tmpreport=work/'report.json';tmpreport.write_text(json.dumps(report,indent=2)+'\n');tmpreport.replace(report_path)
   return report
  finally:shutil.rmtree(work,ignore_errors=True)
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('input');p.add_argument('output_dir');a=p.parse_args()
- try:print(json.dumps(normalize(a.input,a.output_dir),indent=2))
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('input');p.add_argument('output_dir');p.add_argument('--max-bytes',type=int,default=MAX_BYTES);a=p.parse_args()
+ try:print(json.dumps(normalize(a.input,a.output_dir,a.max_bytes),indent=2))
  except Exception as e:print('ERROR:',e,file=sys.stderr);sys.exit(1)
