@@ -44,7 +44,7 @@ def archive_listing(p):
      elif line.startswith('Size = '):
       try:record['size']=int(line[7:])
       except ValueError:record['size']=None
-    if record.get('name') and record.get('type') != '7z':
+    if record.get('name') and record.get('type') != '7z' and pathlib.Path(record['name']).name != pathlib.Path(p).name:
      record.pop('type',None)
      records.append(record)
    names=records
