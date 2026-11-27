@@ -98,7 +98,10 @@ def normalize(src,outdir,limit=MAX_BYTES):
  outdir.mkdir(parents=True,exist_ok=True);final=outdir/'system.img';report_path=outdir/'extract-report.json'
  work=pathlib.Path(tempfile.mkdtemp(prefix='.gsi-extract-',dir=outdir));current=work/'payload';member=None;steps=[]
  try:
-  if zipfile.is_zipfile(src) or tarfile.is_tarfile(src):member=archive_member(src,current,limit)
+  if zipfile.is_zipfile(src) or tarfile.is_tarfile(src):
+   member=archive_member(src,current,limit)
+  elif shutil.which('7z') and subprocess.run(['7z','l','-slt',str(src)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0:
+   member=archive_member(src,current,limit)
   else:bounded_copy(src,current,limit)
   for idx in range(MAX_STEPS):
    with current.open('rb') as f:h=f.read(8)
