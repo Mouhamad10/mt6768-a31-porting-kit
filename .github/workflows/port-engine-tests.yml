@@ -1,0 +1,20 @@
+name: A31 GSI Port Engine validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image tooling
+        run: sudo apt-get update && sudo apt-get install -y android-sdk-libsparse-utils xz-utils lz4 p7zip-full file
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Analyzer CLI smoke test
+        run: |
+          printf 'not an image' > sample.bin
+          python3 tools/gsi_analyze.py sample.bin --json report.json
+          python3 -c 'import json; x=json.load(open("report.json")); assert x["type"]=="unknown" and x["compatibility"]=="not assessed"'
