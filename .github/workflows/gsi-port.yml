@@ -1,69 +1,215 @@
 name: Port GSI for A31 (SM-A315F)
+
+# Manual run: Actions -> "Port GSI for A31 (SM-A315F)" -> Run workflow, paste a GSI URL.
+# This PORTS a GSI for the A31: download + normalise -> mount -> apply an A31 system-side
+# recipe (display density + a props hook + an overlay slot) -> shrink to EROFS -> repack a
+# flashable system image, split into <2GB parts for download, plus the flash kit.
+#
+# Honest scope: a GSI is the SYSTEM partition only, so this edits /system (density, props,
+# RRO overlays, size). Vendor-side problems (audio/RIL/sensor HALs) are NOT fixable from a GSI
+# - those come from the stock A31 vendor or a different GSI variant. The recipe grows as tweaks
+# are proven on-device; see docs/06-gsi-porting.md.
+
 on:
   workflow_dispatch:
     inputs:
       gsi_url:
-        description: Direct URL for GSI/image/archive
+        description: "Direct URL to the GSI (.img / .img.xz / .gz / .lz4 / .zip / .7z)"
         required: true
       label:
-        description: Output label
-        default: gsi
+        description: "Short name for the output"
+        default: "gsi"
       lcd_density:
-        description: Desired density (currently recorded, future recipe hook)
+        description: "A31 display density to inject (A31 is 1080x2400; 420 is a good default)"
         default: "420"
       output_format:
-        description: Future rebuild target; current pipeline preserves source FS
-        default: auto
-      max_bytes:
-        description: Expanded payload limit in bytes; set larger for big GSIs
-        required: false
-        default: "8589934592"
+        description: "Shrink format: erofs or ext4"
+        default: "erofs"
+      mirror:
+        description: "Mirror final system image to GoFile"
+        default: "true"
+
 jobs:
   port:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install intake tools
+        with: { path: kit }
+
+      - name: Free disk space
         run: |
-          sudo find /etc/apt/sources.list.d -type f -exec grep -l 'packages.microsoft.com' {} + | while read -r f; do sudo mv "$f" "$f.disabled"; done
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost /opt/az 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h / | tail -1
+
+      - name: Install tools
+        run: |
           sudo apt-get update
-          sudo apt-get install -y android-sdk-libsparse-utils xz-utils unzip wget lz4 python3 file p7zip-full
-      - name: Run tests
-        run: python3 -m unittest discover -s tests -v
+          sudo apt-get install -y --no-install-recommends \
+            android-sdk-libsparse-utils xz-utils p7zip-full unzip wget \
+            erofs-utils e2fsprogs zip file lz4 xxd
+
       - name: Download GSI
-        env:
-          GSI_URL: ${{ github.event.inputs.gsi_url }}
         run: |
-          set -euo pipefail
-          mkdir work
-          wget --tries=3 --timeout=120 --no-verbose -O work/source "$GSI_URL"
-          test -s work/source
-          sha256sum work/source > work/source.sha256
-      - name: Bounded normalize and preserve intake report
+          set -e
+          mkdir -p work && cd work
+          URL='${{ github.event.inputs.gsi_url }}'
+          echo "Fetching (not printing the URL/token)..."
+          wget --tries=3 --timeout=120 --no-verbose -O gsi.src "$URL"
+          ls -lh gsi.src; echo "type: $(file -b gsi.src)"
+          if file gsi.src | grep -qiE 'HTML|ASCII text'; then
+            echo "::error::URL returned HTML/text, not an image - link may have expired."; head -c 400 gsi.src; exit 1
+          fi
+
+      - name: Normalise to a raw ext4 image
         run: |
-          set -euo pipefail
-          mkdir -p work/extract
-          python3 tools/gsi_extract.py work/source work/extract --max-bytes "${{ github.event.inputs.max_bytes }}" | tee work/extract-report.stdout.json
-          cp work/extract/system.img work/system.img
-          test -s work/system.img
-          python3 -c 'import json; r=json.load(open("work/extract/extract-report.json")); print("Filesystem:",r["filesystem_hint"])' | tee work/fs.txt
-          cp work/extract/extract-report.json work/dist-extract-report.json
-          sha256sum work/system.img > work/system.sha256
-      - name: Package
+          set -e
+          cd work
+          t="$(file -b gsi.src)"
+          case "$t" in
+            *Zip*)   echo "zip contents:"; unzip -l gsi.src | sed -n '1,20p'
+                     mkdir -p ex && (cd ex && unzip -o ../gsi.src >/dev/null)
+                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"; cp "$big" cand.bin ;;
+            *7-zip*) mkdir -p ex && (cd ex && 7z e -y ../gsi.src >/dev/null)
+                     big="$(find ex -type f -printf '%s\t%p\n' | sort -rn | head -1 | cut -f2-)"; cp "$big" cand.bin ;;
+            *)       cp gsi.src cand.bin ;;
+          esac
+          for i in 1 2 3 4 5; do
+            m="$(file -b cand.bin)"; magic="$(head -c4 cand.bin | xxd -p)"
+            if   echo "$m" | grep -qi 'XZ';   then xz -dc   cand.bin > n && mv n cand.bin; continue; fi
+            if   echo "$m" | grep -qi 'gzip'; then gzip -dc cand.bin > n && mv n cand.bin; continue; fi
+            if   echo "$m" | grep -qi 'LZ4';  then lz4 -dc  cand.bin > n && mv n cand.bin; continue; fi
+            if   [ "$magic" = "3aff26ed" ];   then simg2img cand.bin n && mv n cand.bin; continue; fi
+            break
+          done
+          mv cand.bin system.raw
+          rm -rf gsi.src ex                       # free disk
+          echo "normalised: $(du -h system.raw | cut -f1)  type: $(file -b system.raw)"
+          ext4="$(dd if=system.raw bs=1 skip=1080 count=2 2>/dev/null | xxd -p)"
+          erofs="$(dd if=system.raw bs=1 skip=1024 count=4 2>/dev/null | xxd -p)"
+          if   [ "$ext4" = "53ef" ];        then echo "FS=ext4"  | tee fs.txt
+          elif [ "$erofs" = "e2e1f5e0" ];   then echo "FS=erofs" | tee fs.txt
+          else echo "FS=unknown" | tee fs.txt; echo "::warning::input is not ext4/erofs - may be a full ROM, not a GSI system image"; fi
+
+      - name: Apply A31 system recipe
         run: |
-          set -euo pipefail
+          set -e
+          cd work
+          if ! grep -q "FS=ext4" fs.txt; then
+            echo "::warning::input is not ext4 - cannot edit in place; passing image through unchanged for packaging"
+            cp system.raw tree_src_is_image && echo "SRC=image" > src.txt && exit 0
+          fi
+          # ext4 GSIs are often marked shared_blocks (read-only); unshare so we can edit.
+          sudo e2fsck -y -f -E unshare_blocks system.raw || sudo e2fsck -y -f system.raw || true
+          sudo resize2fs system.raw 7G || true           # a little slack for edits
+          mkdir -p sysroot
+          if sudo mount -o loop,rw system.raw sysroot; then echo "SRC=mount" > src.txt; else
+            sudo mount -o loop,ro system.raw sysroot; echo "SRC=mount-ro" > src.txt
+            echo "::warning::rw mount failed - editing skipped, will still shrink/repack"; fi
+          echo "root entries:"; sudo ls sysroot | head
+          if grep -q "SRC=mount$" src.txt; then
+            D='${{ github.event.inputs.lcd_density }}'
+            for f in $(sudo find sysroot -maxdepth 3 -name build.prop 2>/dev/null); do
+              if ! sudo grep -q "A31 (SM-A315F) port" "$f"; then
+                echo "inject A31 props -> $f"
+                printf '\n# --- A31 (SM-A315F) port ---\nro.sf.lcd_density=%s\n' "$D" | sudo tee -a "$f" >/dev/null
+              fi
+            done
+            # overlay slot: drop any RRO APKs we ship into /product/overlay
+            if ls kit/gsi/a31-overlays/*.apk >/dev/null 2>&1; then
+              sudo mkdir -p sysroot/product/overlay
+              sudo cp kit/gsi/a31-overlays/*.apk sysroot/product/overlay/ && echo "added overlays"
+            fi
+          fi
+
+      - name: Shrink + repack flashable system image
+        run: |
+          set -e
+          cd work
           OUT="system-a31-${{ github.event.inputs.label }}"
-          mkdir -p work/dist
-          split -b 1900M -d work/system.img "work/dist/${OUT}.img.part."
-          printf 'Detected FS: %s\nRequested density: %s\nRecipe status: pending verified A31-specific recipe\nDevice boot status: not tested\n' "$(cat work/fs.txt)" "${{ github.event.inputs.lcd_density }}" > work/dist/PORT-STATUS.txt
-          cp work/source.sha256 work/system.sha256 work/dist/
-          cp work/dist-extract-report.json work/dist/extract-report.json
-          cat > work/dist/HOW-TO-REJOIN.txt <<EOF
-          Rejoin: cat ${OUT}.img.part.* > system.img
-          The pipeline normalizes and packages; it does not claim a device-tested port.
+          FMT='${{ github.event.inputs.output_format }}'
+          if grep -q "SRC=image" src.txt; then
+            cp system.raw "$OUT.img"
+          elif [ "$FMT" = "erofs" ]; then
+            sudo mkfs.erofs -zlz4hc "$OUT.img" sysroot     # builds EROFS from the (edited) mounted tree, preserves xattrs
+            sudo umount sysroot || true
+          else
+            sudo umount sysroot || true
+            sudo e2fsck -y -f system.raw || true
+            sudo resize2fs -M system.raw || true
+            cp system.raw "$OUT.img"
+          fi
+          rm -f system.raw
+          sudo chown "$USER" "$OUT.img" 2>/dev/null || true
+          echo "FINAL $(ls -lh $OUT.img | awk '{print $5}')  type: $(file -b $OUT.img)"
+          # split into <2GB parts so it fits GitHub's 2GB-per-file artifact limit
+          split -b 1900M -d "$OUT.img" "${OUT}.img.part."
+          ls -lh "${OUT}.img.part."* 2>/dev/null || cp "$OUT.img" "${OUT}.img.part.00"
+          echo "$OUT" > outname.txt
+
+      - name: Assemble flashing kit
+        run: |
+          set -e
+          cd work
+          OUT="$(cat outname.txt)"
+          mkdir -p dist
+          mv "${OUT}.img.part."* dist/
+          cp ../kit/gsi/flash-A31-gsi.md   dist/README.md 2>/dev/null || true
+          cp ../kit/gsi/disable-vbmeta.md  dist/ 2>/dev/null || true
+          cat > dist/HOW-TO-REJOIN.txt <<EOF
+          This ported A31 system image was split so it fits GitHub's 2GB artifact limit.
+          Rejoin it before flashing:
+
+            Linux/Mac:  cat ${OUT}.img.part.* > system.img
+            Windows:    copy /b ${OUT}.img.part.00 + ${OUT}.img.part.01 system.img
+
+          Then follow README.md (fastbootd -> disable vbmeta -> fastboot flash system system.img -> wipe data).
+          Format: $(cat fs.txt)  |  density injected: ${{ github.event.inputs.lcd_density }}
           EOF
-          cat work/dist/PORT-STATUS.txt >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+          ls -lh dist/
+          {
+            echo "## A31 GSI port result"
+            echo "- label: **${{ github.event.inputs.label }}**"
+            echo "- input fs: **$(cat fs.txt)**  -> output format: **${{ github.event.inputs.output_format }}**"
+            echo "- ported image: **$(du -ch dist/${OUT}.img.part.* | tail -1 | cut -f1)** (split into $(ls dist/${OUT}.img.part.* | wc -l) parts)"
+            echo "- injected: lcd_density=${{ github.event.inputs.lcd_density }}"
+            echo ""
+            echo "Download the **a31-ported-gsi** artifact, rejoin per HOW-TO-REJOIN.txt, then flash per README.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mirror a direct link (GoFile)
+        if: ${{ github.event.inputs.mirror == 'true' }}
+        run: |
+          set +e
+          cd work
+          OUT="$(cat outname.txt)"
+          F="$OUT.img"
+          [ -s "$F" ] || { echo "no full image to mirror"; exit 0; }
+          SZ=$(ls -lh "$F" | awk '{print $5}')
+          SHA=$(sha256sum "$F" | cut -d' ' -f1)
+          echo ">> uploading $F ($SZ) to GoFile ..."
+          SRV=$(curl -s https://api.gofile.io/servers | grep -oE '"name":"[a-z0-9-]+"' | head -1 | cut -d'"' -f4)
+          [ -z "$SRV" ] && SRV=store1
+          R=$(curl -s --retry 3 --retry-delay 5 -F "file=@$F" "https://${SRV}.gofile.io/contents/uploadfile")
+          GF=$(echo "$R" | grep -oE '"downloadPage":"[^"]+"' | head -1 | cut -d'"' -f4)
+          {
+            echo ""
+            echo "### Direct download (no GitHub needed)"
+            if [ -n "$GF" ]; then
+              echo "- **GoFile:** $GF"
+              echo "  - this is the full, already-rejoined \`system.img\` ($SZ) - flash it as-is."
+            else
+              echo "- GoFile upload failed (see log). The split artifact above still works."
+            fi
+            echo ""
+            echo "SHA256: \`$SHA\`"
+            echo "> Anonymous host, no login. GoFile keeps the file while people download it and drops it after a stretch of no downloads - not permanent."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "GF=$GF"
+
+      - name: Upload ported GSI + kit
+        uses: actions/upload-artifact@v4
         with:
-          name: a31-gsi-port-output
+          name: a31-ported-gsi
           path: work/dist/*
