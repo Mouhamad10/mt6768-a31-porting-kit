@@ -177,3 +177,10 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 - Normalized payloads are staged in a unique temporary workspace, and final image/report files are replaced only after image processing completes. Inputs inside the output directory are rejected.
 - EROFS builds now stage the output, validate compression and tree/output paths, run `fsck.erofs` when available, and preserve an existing output if validation fails.
 - Added regression coverage for path rejection, sparse-size checks, duplicate ZIP members, and staged EROFS validation. These tests are committed but have not yet been executed locally or confirmed in Actions.
+
+
+### 2026-11-27 — GSI workflow now uses bounded extractor
+
+- Routed the manual GSI port workflow through `gsi_extract.py` rather than the older permissive intake normalizer; its provenance report is included with the packaged output.
+- The current bounded extractor handles raw payloads, ZIP/TAR-selected payloads, gzip/XZ, LZ4 and sparse conversion when tools are present. **7z archives are not currently supported by this workflow path**; unsupported intake now fails rather than silently copying an unnormalized archive as `system.img`.
+- GitHub Actions should execute the test suite on this push; execution results are not yet verified from this session.
