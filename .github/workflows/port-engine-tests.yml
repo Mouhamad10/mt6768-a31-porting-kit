@@ -10,9 +10,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install image tooling
-        run: sudo find /etc/apt/sources.list.d -type f -exec grep -l 'packages.microsoft.com' {} + | while read -r f; do sudo mv "$f" "$f.disabled"; done
-sudo apt-get update
-sudo apt-get install -y android-sdk-libsparse-utils xz-utils lz4 p7zip-full file e2fsprogs erofs-utils f2fs-tools
+        run: |
+          sudo find /etc/apt/sources.list.d -type f -exec grep -l 'packages.microsoft.com' {} + | while read -r f; do sudo mv "$f" "$f.disabled"; done
+          sudo apt-get update
+          sudo apt-get install -y android-sdk-libsparse-utils xz-utils lz4 p7zip-full file e2fsprogs erofs-utils f2fs-tools
       - name: Unit tests
         run: python3 -m unittest discover -s tests -v
       - name: Filesystem inspector smoke test
