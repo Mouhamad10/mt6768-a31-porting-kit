@@ -36,7 +36,7 @@ def archive_listing(p):
   elif detect(p)=='7z' and shutil_7z(p):
    result=subprocess.run(['7z','l','-slt',str(p)],capture_output=True,text=True,check=True)
    records=[]
-   for block in result.stdout.split('\\n\\n'):
+   for block in result.stdout.split('\n\n'):
     record={}
     for line in block.splitlines():
      if line.startswith('Path = '):record['name']=line[7:]
