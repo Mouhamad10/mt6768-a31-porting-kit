@@ -71,7 +71,7 @@ def normalize(src,outdir,limit=MAX_BYTES):
  src=pathlib.Path(src).resolve();outdir=pathlib.Path(outdir).resolve()
  if limit<=0:raise ValueError('limit must be positive')
  if not src.is_file():raise ValueError('input is not a file')
- if outdir==src or src in outdir.parents:raise ValueError('output directory must not contain input')
+ if outdir==src or src in outdir.parents or outdir in src.parents:raise ValueError('input and output directory must not overlap')
  outdir.mkdir(parents=True,exist_ok=True);final=outdir/'system.img';report_path=outdir/'extract-report.json'
  work=pathlib.Path(tempfile.mkdtemp(prefix='.gsi-extract-',dir=outdir));current=work/'payload';member=None;steps=[]
  try:
