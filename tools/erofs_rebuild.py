@@ -29,7 +29,7 @@ def rebuild(tree,out,compression):
   report={'tree':str(tree),'output':str(out),'compression':compression,'policy':'standard LZ4 only (-zlz4) or uncompressed; advanced features prohibited','size_bytes':tmp.stat().st_size,'sha256':sha(tmp),'fsck_erofs':validation,'boot_test':'not_performed'}
   tmp.replace(out)
   reporttmp=out.with_suffix(out.suffix+'.report.json.tmp')
-  reporttmp.write_text(json.dumps(report,indent=2)+'\\n')
+  reporttmp.write_text(json.dumps(report,indent=2)+'\n')
   reporttmp.replace(out.with_suffix(out.suffix+'.report.json'))
   return report
  finally:tmp.unlink(missing_ok=True)
