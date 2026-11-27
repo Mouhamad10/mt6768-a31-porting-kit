@@ -45,6 +45,29 @@ def archive_member(src,dst,limit=MAX_BYTES):
    if i is None:raise ValueError('cannot read selected member')
    with i:copy_stream_bounded(i,dst,limit)
    return name
+ if shutil.which('7z'):
+  listing=subprocess.run(['7z','l','-slt',str(src)],capture_output=True,text=True)
+  if listing.returncode==0:
+   records=[];record={}
+   for line in listing.stdout.splitlines():
+    if not line.strip():
+     if record:records.append(record);record={}
+    elif ' = ' in line:
+     k,v=line.split(' = ',1);record[k]=v
+   if record:records.append(record)
+   files=[r for r in records if r.get('Folder')!='+' and r.get('Path') and r.get('Size','').isdigit()]
+   name=choose([r['Path'] for r in files])
+   matches=[r for r in files if r.get('Path')==name]
+   if len(matches)!=1:raise ValueError('ambiguous or duplicate 7z member')
+   if int(matches[0]['Size'])>limit:raise ValueError('archive member exceeds size limit')
+   p=subprocess.Popen(['7z','x','-so',str(src),name],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+   try:
+    with p.stdout as stream:copy_stream_bounded(stream,dst,limit)
+    rc=p.wait()
+    if rc:raise RuntimeError('7z extraction failed: '+str(rc))
+   except Exception:
+    p.kill();p.wait();pathlib.Path(dst).unlink(missing_ok=True);raise
+   return name
  raise ValueError('unsupported archive')
 def run_bounded(cmd,dst,limit=MAX_BYTES):
  p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
