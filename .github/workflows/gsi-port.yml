@@ -32,11 +32,15 @@ jobs:
           wget --tries=3 --timeout=120 --no-verbose -O work/source "$GSI_URL"
           test -s work/source
           sha256sum work/source > work/source.sha256
-      - name: Normalize if possible, retain source on unsupported input
+      - name: Bounded normalize and preserve intake report
         run: |
           set -euo pipefail
-          python3 tools/gsi_prepare.py work/source work/system.img | tee work/fs.txt
+          mkdir -p work/extract
+          python3 tools/gsi_extract.py work/source work/extract | tee work/extract-report.stdout.json
+          cp work/extract/system.img work/system.img
           test -s work/system.img
+          python3 -c 'import json; r=json.load(open("work/extract/extract-report.json")); print("Filesystem:",r["filesystem_hint"])' | tee work/fs.txt
+          cp work/extract/extract-report.json work/dist-extract-report.json
           sha256sum work/system.img > work/system.sha256
       - name: Package
         run: |
@@ -45,7 +49,7 @@ jobs:
           mkdir -p work/dist
           split -b 1900M -d work/system.img "work/dist/${OUT}.img.part."
           printf 'Detected FS: %s\nRequested density: %s\nRecipe status: pending verified A31-specific recipe\nDevice boot status: not tested\n' "$(cat work/fs.txt)" "${{ github.event.inputs.lcd_density }}" > work/dist/PORT-STATUS.txt
-          cp work/source.sha256 work/system.sha256 work/dist/
+          cp work/source.sha256 work/system.sha256 work/dist/\n          cp work/dist-extract-report.json work/dist/extract-report.json
           cat > work/dist/HOW-TO-REJOIN.txt <<EOF
           Rejoin: cat ${OUT}.img.part.* > system.img
           The pipeline normalizes and packages; it does not claim a device-tested port.
