@@ -182,7 +182,7 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 ### 2026-11-27 — GSI workflow now uses bounded extractor
 
 - Routed the manual GSI port workflow through `gsi_extract.py` rather than the older permissive intake normalizer; its provenance report is included with the packaged output.
-- The current bounded extractor handles raw payloads, ZIP/TAR-selected payloads, gzip/XZ, LZ4 and sparse conversion when tools are present. **7z archives are not currently supported by this workflow path**; unsupported intake now fails rather than silently copying an unnormalized archive as `system.img`.
+- The current bounded extractor handles raw payloads, ZIP/TAR/7z-selected payloads, gzip/XZ, LZ4 and sparse conversion when tools are present. 7z member extraction is streamed through a size bound rather than expanding archive paths into the workspace.
 - GitHub Actions should execute the test suite on this push; execution results are not yet verified from this session.
 
 
