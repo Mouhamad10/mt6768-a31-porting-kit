@@ -1,6 +1,7 @@
-import pathlib,tempfile,unittest\nfrom unittest.mock import patch\nfrom tools.gsi_analyze import archive_listing
-from tools.gsi_prepare import choose,fs_type
-from tools.gsi_analyze import detect
+import pathlib, tempfile, unittest
+from unittest.mock import patch
+from tools.gsi_analyze import archive_listing, detect
+
 class AnalyzerTests(unittest.TestCase):
  def test_sparse_magic(self):
   with tempfile.TemporaryDirectory() as d:
@@ -14,7 +15,6 @@ class AnalyzerTests(unittest.TestCase):
  def test_ext4(self):
   with tempfile.TemporaryDirectory() as d:
    p=pathlib.Path(d)/'x';b=bytearray(4096);b[1080:1082]=bytes.fromhex('53ef');p.write_bytes(b);self.assertEqual(detect(p),'ext4')
-
  def test_7z_magic(self):
   with tempfile.TemporaryDirectory() as d:
    p=pathlib.Path(d)/'archive.7z';p.write_bytes(bytes.fromhex('377abcaf271c')+bytes(20));self.assertEqual(detect(p),'7z')
