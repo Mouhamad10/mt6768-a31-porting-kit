@@ -47,7 +47,7 @@ def archive_member(src,dst):
    return name
  raise ValueError('unsupported archive')
 def run_bounded(cmd,dst,limit=MAX_BYTES):
- p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
  try:
   with open(dst,'wb') as out:
    total=0
