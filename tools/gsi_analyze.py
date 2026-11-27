@@ -34,7 +34,16 @@ def archive_listing(p):
    with tarfile.open(p) as t:names=[{'name':i.name,'size':i.size} for i in t.getmembers() if i.isfile()]
   elif shutil_7z(p):
    result=subprocess.run(['7z','l','-slt',str(p)],capture_output=True,text=True,check=True)
-   names=[{'name':x[7:],'size':None} for x in result.stdout.splitlines() if x.startswith('Path = ')][1:]
+   records=[]
+   for block in result.stdout.split('\\n\\n'):
+    record={}
+    for line in block.splitlines():
+     if line.startswith('Path = '):record['name']=line[7:]
+     elif line.startswith('Size = '):
+      try:record['size']=int(line[7:])
+      except ValueError:record['size']=None
+    if record.get('name') and record['name'] != str(p):records.append(record)
+   names=records
  except Exception as e:return {'error':str(e)}
  return names
 def shutil_7z(p):
