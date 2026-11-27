@@ -14,6 +14,10 @@ on:
       output_format:
         description: Future rebuild target; current pipeline preserves source FS
         default: auto
+      max_bytes:
+        description: Expanded payload limit in bytes; set larger for big GSIs
+        required: false
+        default: "8589934592"
 jobs:
   port:
     runs-on: ubuntu-24.04
