@@ -1,4 +1,5 @@
-import gzip, pathlib, tempfile, zipfile, unittest, lzma
+import gzip, pathlib, tempfile, zipfile, unittest, lzma, io
+from unittest.mock import patch
 from tools.gsi_extract import normalize, sparse_size
 class ExtractTests(unittest.TestCase):
  def payload(self):
@@ -36,6 +37,17 @@ class ExtractTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    p=pathlib.Path(d)/'sparse';h=bytearray(28);h[:4]=bytes.fromhex('3aff26ed');h[12:16]=(4096).to_bytes(4,'little');h[16:20]=(10).to_bytes(4,'little');p.write_bytes(h)
    with self.assertRaises(ValueError):sparse_size(p,100)
+ 
+ def test_7z_stream_selection_mocked(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=pathlib.Path(d);src=root/'archive.7z';src.write_bytes(b'fake')
+   listing='Path = archive.7z\\n\\nPath = system.img\\nSize = 3\\nFolder = -\\n\\n'
+   proc=type('Proc',(),{'stdout':io.BytesIO(b'abc'),'wait':lambda self:0,'kill':lambda self:None})()
+   with patch('tools.gsi_extract.zipfile.is_zipfile',return_value=False),patch('tools.gsi_extract.tarfile.is_tarfile',return_value=False),patch('tools.gsi_extract.shutil.which',return_value='/fake/7z'),patch('tools.gsi_extract.subprocess.run',return_value=type('R',(),{'returncode':0,'stdout':listing})()),patch('tools.gsi_extract.subprocess.Popen',return_value=proc):
+    r=normalize(src,root/'out',100)
+   self.assertEqual(r['selected_member'],'system.img')
+   self.assertEqual((root/'out/system.img').read_bytes(),b'abc')
+
  def test_duplicate_zip_member_rejected(self):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);s=root/'dup.zip'
