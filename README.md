@@ -138,3 +138,13 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 - Smoke-checked the four filesystem/image signatures (sparse, ext4, EROFS, F2FS) against synthetic byte fixtures in this session. This does **not** yet prove the GitHub workflow executed or test real images.
 - Fixed TAR signature detection to inspect the TAR magic offset rather than the initial header bytes.
 - Next: implement actual extraction backends, sparse conversion and safe archive-member handling, then image-level diagnostics and an audited recipe.
+
+
+### 2026-11-27 — GSI port engine steps 3–7 foundation
+
+- Added ZIP/TAR image-member inventory (no extraction) to make multi-image archive selection explicit.
+- Added a heuristic scan for fstab, mount and logical-partition references in extracted trees.
+- Added an A31 compatibility evidence report template and a CLI report that deliberately lists unresolved vendor/HAL, kernel ABI and SELinux checks rather than declaring compatibility.
+- Added a documented reversible-recipe format; recipes are review/dry-run-first and not automatically applied.
+- Added opt-in EROFS rebuild CLI restricted to standard LZ4 compression (`-zlz4`) or uncompressed output. LZ4HC and advanced EROFS features are excluded. Output hash/size and available fsck result are recorded; no boot claim.
+- **Validation caveat:** these are newly committed foundations; runtime tests and actual device boot are not yet verified.
