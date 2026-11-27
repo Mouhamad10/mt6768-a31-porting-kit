@@ -77,10 +77,10 @@ def normalize(src,outdir):
   for idx in range(MAX_STEPS):
    with current.open('rb') as f:h=f.read(8)
    nxt=work/f'normalized_{idx}'
-   if h.startswith(b'\\xfd7zXZ\\x00'):
+   if h.startswith(b'\xfd7zXZ\x00'):
     op=lzma.open(current,'rb')
     label='xz'
-   elif h.startswith(b'\\x1f\\x8b'):
+   elif h.startswith(b'\x1f\x8b'):
     op=gzip.open(current,'rb');label='gzip'
    elif h[:4]==bytes.fromhex('3aff26ed'):
     if not shutil.which('simg2img'):raise RuntimeError('simg2img unavailable')
