@@ -4,9 +4,9 @@
 import argparse,gzip,lzma,pathlib,shutil,subprocess,sys,zipfile
 def fs_type(p):
  with p.open('rb') as f:
-  f.seek(1080);ext=f.read(2);f.seek(1024);er=f.read(4)
+  f.seek(1080);ext=f.read(2);f.seek(1024);er=f.read(4);f.seek(1024);f2=f.read(4)
  if ext==bytes.fromhex('53ef'):return 'ext4'
- if er==bytes.fromhex('e2e1f5e0'):return 'erofs'
+ if er==bytes.fromhex('e2e1f5e0'):return 'erofs'\n if f2==bytes.fromhex('1020f5f2'):return 'f2fs'
  return 'unknown'
 def choose(names):
  files=[n for n in names if not n.endswith('/')]
