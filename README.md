@@ -190,3 +190,8 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 
 - The extraction ceiling is configurable instead of fixed: the CLI accepts `--max-bytes`; the manual GSI workflow exposes `max_bytes` with an 8 GiB default (8589934592 bytes). Users can raise it for large payloads or lower it to constrain extraction. This ceiling applies to the expanded normalized payload, not the compressed download size.
 - Added regression coverage for choosing a ceiling that permits a larger payload and rejects a payload beyond the chosen ceiling. Test execution remains unverified.
+
+
+## System compatibility audit (experimental)
+
+A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dependencies/SONAME duplicates, property value conflicts, init scripts, APK/APEX and overlay paths. It deliberately does not delete duplicate libraries or change properties/HAL services automatically: duplicate names are not evidence of boot-breaking conflict. See [docs/system-tree-audit.md](docs/system-tree-audit.md). **Actual Flyme OS 16 image testing is pending** because the Pixeldrain payload could not be downloaded in this session. This analyzer is not yet an automated image extractor or a verified porting patch engine.
