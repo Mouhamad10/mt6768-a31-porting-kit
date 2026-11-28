@@ -28,10 +28,26 @@ jobs:
       - name: Analyze payload (read-only)
         run: |
           python3 tools/gsi_workbench.py work/input.bin --out-dir report
+      - name: Normalize payload and inspect filesystem
+        run: |
+          set -euo pipefail
+          python3 tools/gsi_prepare.py work/input.bin work/normalized.img
+          python3 tools/gsi_fs_inspect.py work/normalized.img --json report/filesystem-inspection.json > report/filesystem-inspection.txt
+          python3 - <<'PY'
+          import json
+          r=json.load(open('report/filesystem-inspection.json'))
+          with open('report/filesystem-inspection.md','w') as f:
+              f.write('# Filesystem inspection\n\n')
+              f.write('- Detected: **'+r.get('filesystem','unknown')+'**\n')
+              f.write('- Inspection: '+r.get('inspection','signature_only')+'\n')
+              f.write('- Compatibility: **not assessed**\n')
+              f.write('- No filesystem changes or repacking performed.\n')
+          PY
       - name: Publish summary
         run: |
           cat report/gsi-report.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload analysis
+          cat report/filesystem-inspection.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload reports
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.label }}-report
