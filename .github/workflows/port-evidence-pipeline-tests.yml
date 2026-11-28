@@ -6,9 +6,13 @@ on:
       - 'tools/port_log_analyzer.py'
       - 'tools/evidence_correlator.py'
       - 'tools/compatibility_evidence.py'
-      - 'tools/subsystem_intelligence.py'\n      - 'tools/vintf_compare.py'
+      - 'tools/subsystem_intelligence.py'
+      - 'tools/vintf_compare.py'
+      - 'tools/elf_symbol_compare.py'
       - 'tests/test_port_pipeline.py'
-      - 'tests/test_subsystem_intelligence.py'\n      - 'tests/test_vintf_compare.py'
+      - 'tests/test_subsystem_intelligence.py'
+      - 'tests/test_vintf_compare.py'
+      - 'tests/test_elf_symbol_compare.py'
       - '.github/workflows/port-evidence-pipeline-tests.yml'
   pull_request:
     paths:
@@ -16,9 +20,13 @@ on:
       - 'tools/port_log_analyzer.py'
       - 'tools/evidence_correlator.py'
       - 'tools/compatibility_evidence.py'
-      - 'tools/subsystem_intelligence.py'\n      - 'tools/vintf_compare.py'
+      - 'tools/subsystem_intelligence.py'
+      - 'tools/vintf_compare.py'
+      - 'tools/elf_symbol_compare.py'
       - 'tests/test_port_pipeline.py'
-      - 'tests/test_subsystem_intelligence.py'\n      - 'tests/test_vintf_compare.py'
+      - 'tests/test_subsystem_intelligence.py'
+      - 'tests/test_vintf_compare.py'
+      - 'tests/test_elf_symbol_compare.py'
       - '.github/workflows/port-evidence-pipeline-tests.yml'
 jobs:
   tests:
@@ -28,5 +36,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y binutils
       - run: python -m unittest discover -s tests -p 'test_port_pipeline.py' -v
       - run: python -m unittest discover -s tests -p 'test_subsystem_intelligence.py' -v
+      - run: python -m unittest discover -s tests -p 'test_vintf_compare.py' -v
+      - run: python -m unittest discover -s tests -p 'test_elf_symbol_compare.py' -v
