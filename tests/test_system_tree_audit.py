@@ -5,9 +5,9 @@ class AuditSmoke(unittest.TestCase):
  def test_property_conflict_and_inventory(self):
   with tempfile.TemporaryDirectory() as td:
    root=pathlib.Path(td)/'tree'; (root/'system').mkdir(parents=True); (root/'product/overlay').mkdir(parents=True)
-   (root/'system/build.prop').write_text('ro.test=one\\n')
-   (root/'product/build.prop').write_text('ro.test=two\\n')
-   (root/'system/init.rc').write_text('on boot\\n')
+   (root/'system/build.prop').write_text('ro.test=one\n')
+   (root/'product/build.prop').write_text('ro.test=two\n')
+   (root/'system/init.rc').write_text('on boot\n')
    (root/'product/overlay/test.apk').write_text('fixture')
    report=pathlib.Path(td)/'report.json'; txt=pathlib.Path(td)/'report.txt'
    subprocess.run(['python3',str(TOOL),str(root),'--report',str(report),'--props-report',str(txt)],check=True)
@@ -23,7 +23,7 @@ class AuditSmoke(unittest.TestCase):
   if not compiler: self.skipTest('C compiler unavailable')
   with tempfile.TemporaryDirectory() as td:
    root=pathlib.Path(td)/'tree'; (root/'system/lib64').mkdir(parents=True)
-   src=pathlib.Path(td)/'fixture.c'; src.write_text('int fixture(void){return 42;}\\n')
+   src=pathlib.Path(td)/'fixture.c'; src.write_text('int fixture(void){return 42;}\n')
    so=root/'system/lib64/libfixture.so'
    subprocess.run([compiler,'-shared','-fPIC',str(src),'-Wl,-soname,libfixture.so','-o',str(so)],check=True)
    report=pathlib.Path(td)/'report.json'; txt=pathlib.Path(td)/'report.txt'
@@ -44,7 +44,7 @@ class AuditSmoke(unittest.TestCase):
  def test_invalid_elf_is_recorded_without_crashing(self):
   with tempfile.TemporaryDirectory() as td:
    root=pathlib.Path(td)/'tree'; (root/'system/lib64').mkdir(parents=True)
-   bad=root/'system/lib64/broken.so'; bad.write_bytes(b'\\x7fELFbroken')
+   bad=root/'system/lib64/broken.so'; bad.write_bytes(b'\x7fELFbroken')
    report=pathlib.Path(td)/'report.json'; txt=pathlib.Path(td)/'report.txt'
    subprocess.run(['python3',str(TOOL),str(root),'--report',str(report),'--props-report',str(txt)],check=True)
    data=json.loads(report.read_text())
