@@ -1,0 +1,21 @@
+name: Port log analyzer tests
+on:
+  push:
+    paths:
+      - tools/port_log_analyzer.py
+      - tests/test_port_log_analyzer.py
+      - .github/workflows/port-log-analyzer-tests.yml
+  pull_request:
+    paths:
+      - tools/port_log_analyzer.py
+      - tests/test_port_log_analyzer.py
+      - .github/workflows/port-log-analyzer-tests.yml
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p 'test_port_log_analyzer.py' -v
