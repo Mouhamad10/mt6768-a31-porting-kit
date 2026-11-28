@@ -34,5 +34,5 @@ def scan(root):
  return {'root':str(root),'file_count':len(files),'evidence':findings,'xml_rc_policy_snippets':snippets,'assessment':'inventory_and_pattern_evidence_only','unknowns':['HAL service runtime registration','VINTF compatibility enforcement outcome','library ABI and symbol compatibility','SELinux policy compile and runtime behavior'],'no_changes_made':True}
 
 def main():
- a=argparse.ArgumentParser();a.add_argument('tree');a.add_argument('--report',default='stage11-report.json');x=a.parse_args();r=scan(x.tree);pathlib.Path(x.report).write_text(json.dumps(r,indent=2)+'\\n');print(json.dumps(r,indent=2))
+ a=argparse.ArgumentParser();a.add_argument('tree');a.add_argument('--report',default='stage11-report.json');x=a.parse_args();r=scan(x.tree);pathlib.Path(x.report).write_text(json.dumps(r,indent=2)+'\n');print(json.dumps(r,indent=2))
 if __name__=='__main__':main()
