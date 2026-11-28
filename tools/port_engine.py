@@ -21,8 +21,10 @@ def recipe_ops(root,recipes,ids):
   try:
    if not set(r.get("trigger_signatures",[])).intersection(ids):continue
    path=r.get("path","");key=r.get("key","")
-   if r.get("type")!="set_property" or not path or not re.fullmatch(r"[A-Za-z0-9_.-]+",key) or "value" not in r or not r.get("expected_sha256"):
-    rejected.append({"recipe":rid,"reason":"unsupported or malformed; requires type/path/key/value/SHA/trigger"});continue
+   typ=r.get("type")
+   valid=(typ=="set_property" and re.fullmatch(r"[A-Za-z0-9_.-]+",key) and "value" in r) or (typ=="replace_exact" and isinstance(r.get("before_text"),str) and isinstance(r.get("after_text"),str) and r.get("before_text") and r.get("before_text")!=r.get("after_text"))
+   if not valid or not path or not r.get("expected_sha256"):
+    rejected.append({"recipe":rid,"reason":"malformed/unsupported; requires supported operation, relative path, SHA, trigger and operation fields"});continue
    p=(root/path).resolve()
    if not p.is_relative_to(root) or not p.is_file():
     rejected.append({"recipe":rid,"reason":"target missing or path escapes tree"});continue
@@ -31,7 +33,13 @@ def recipe_ops(root,recipes,ids):
    before=p.read_bytes()
    if sha(before)!=r["expected_sha256"]:
     rejected.append({"recipe":rid,"reason":"SHA precondition mismatch"});continue
-   seen.add(p);ops.append({"op":"set_property","path":path,"key":key,"value":str(r["value"]),"expected_sha256":sha(before),"recipe_id":rid,"why":r.get("why","")})
+   seen.add(p);if typ=="set_property": op={"op":typ,"path":path,"key":key,"value":str(r["value"])}
+   else:
+    count=p.read_text(encoding="utf-8").count(r["before_text"])
+    if count!=1:
+     rejected.append({"recipe":rid,"reason":f"before_text must occur exactly once (found {count})"});continue
+    op={"op":typ,"path":path,"before_text":r["before_text"],"after_text":r["after_text"]}
+   op["expected_sha256"]=sha(before);op["recipe_id"]=rid;op["why"]=r.get("why","");ops.append(op)
   except (TypeError,ValueError,KeyError) as e: rejected.append({"recipe":rid,"reason":"invalid recipe data: "+str(e)})
  return ops,rejected
 def main():
@@ -39,8 +47,8 @@ def main():
  if x.apply and (not x.tree or not x.recipes):a.error("--apply requires --tree and --recipes")
  text=pathlib.Path(x.log).read_text(encoding="utf-8",errors="replace");db=load_json(x.signatures);hits,corr,ids=scan(text,db);root=pathlib.Path(x.tree).resolve() if x.tree else None
  ops,rejected=recipe_ops(root,load_json(x.recipes),ids) if root and x.recipes else ([],[])
- patch={"schema":"a31-system-patch-v1","operations":[{k:v for k,v in o.items() if k in ("op","path","key","value","expected_sha256")} for o in ops]}
- report={"schema":"a31-port-engine-report-v1","log":str(pathlib.Path(x.log)),"matched_signature_ids":sorted(ids),"diagnoses":hits,"correlations":corr,"repair_candidates":ops,"rejected_recipes":rejected,"status":"REPAIR_CANDIDATES_READY" if ops else "DIAGNOSIS_ONLY","guardrails":["Unknown signatures remain diagnostic-only.","Recipes must explicitly match and hash-lock files.","Only property changes are supported by this version.","Review generated reports/proposals before applying.","system_ext is merged beneath system; no separate system_ext partition assumed."]}
+ patch={"schema":"a31-system-patch-v1","operations":[{k:v for k,v in o.items() if k in ("op","path","key","value","before_text","after_text","expected_sha256")} for o in ops]}
+ report={"schema":"a31-port-engine-report-v1","log":str(pathlib.Path(x.log)),"matched_signature_ids":sorted(ids),"diagnoses":hits,"correlations":corr,"repair_candidates":ops,"rejected_recipes":rejected,"status":"REPAIR_CANDIDATES_READY" if ops else "DIAGNOSIS_ONLY","guardrails":["Unknown signatures remain diagnostic-only.","Recipes must explicitly match and hash-lock files.","Supported edits: property set and unique literal text replacement; both SHA-locked.","Review generated reports/proposals before applying.","system_ext is merged beneath system; no separate system_ext partition assumed."]}
  pathlib.Path(x.report).write_text(json.dumps(report,indent=2)+"\n")
  if ops:pathlib.Path(x.patch).write_text(json.dumps(patch,indent=2)+"\n")
  print(f"Diagnoses: {len(hits)}; correlations: {len(corr)}; guarded candidates: {len(ops)}; rejected recipes: {len(rejected)}")
