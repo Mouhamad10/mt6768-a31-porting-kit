@@ -19,20 +19,20 @@ def scan(root):
   if p.suffix=='.so':
    try:
     data=p.read_bytes()
-    if data[:4]==b'\\x7fELF': findings['libraries'].append({'path':rel,'sha256':hashlib.sha256(data).hexdigest()})
+    if data[:4]==b'\x7fELF': findings['libraries'].append({'path':rel,'sha256':hashlib.sha256(data).hexdigest()})
    except OSError: pass
   if name.startswith('fstab') or 'mount' in name: findings['partition_and_mount_hints'].append(rel)
   if p.suffix.lower()=='.xml':
-   for m in re.finditer(r'<\\s*(hal|interface|name|version|fqname|instance|transport|service)\\b[^>]*>',content,re.I):
-    snippets.append({'file':rel,'line':content[:m.start()].count('\\n')+1,'tag':m.group(1),'snippet':m.group(0)[:250]})
+   for m in re.finditer(r'<\s*(hal|interface|name|version|fqname|instance|transport|service)\b[^>]*>',content,re.I):
+    snippets.append({'file':rel,'line':content[:m.start()].count('\n')+1,'tag':m.group(1),'snippet':m.group(0)[:250]})
   elif p.suffix=='.rc':
-   for m in re.finditer(r'(?m)^\\s*(service|interface|import|on)\\s+.*$',content):
-    snippets.append({'file':rel,'line':content[:m.start()].count('\\n')+1,'directive':m.group(0).strip()[:250]})
+   for m in re.finditer(r'(?m)^\s*(service|interface|import|on)\s+.*$',content):
+    snippets.append({'file':rel,'line':content[:m.start()].count('\n')+1,'directive':m.group(0).strip()[:250]})
   elif p.suffix in ('.cil','.te'):
-   for m in re.finditer(r'(?m)^\\s*(type|typeattribute|allow|neverallow|permissive)\\s+.*$',content):
-    snippets.append({'file':rel,'line':content[:m.start()].count('\\n')+1,'policy_statement':m.group(0).strip()[:250]})
+   for m in re.finditer(r'(?m)^\s*(type|typeattribute|allow|neverallow|permissive)\s+.*$',content):
+    snippets.append({'file':rel,'line':content[:m.start()].count('\n')+1,'policy_statement':m.group(0).strip()[:250]})
  return {'root':str(root),'file_count':len(files),'evidence':findings,'xml_rc_policy_snippets':snippets,'assessment':'inventory_and_pattern_evidence_only','unknowns':['HAL service runtime registration','VINTF compatibility enforcement outcome','library ABI and symbol compatibility','SELinux policy compile and runtime behavior'],'no_changes_made':True}
 
 def main():
- a=argparse.ArgumentParser();a.add_argument('tree');a.add_argument('--report',default='stage11-report.json');x=a.parse_args();r=scan(x.tree);pathlib.Path(x.report).write_text(json.dumps(r,indent=2)+'\\n');print(json.dumps(r,indent=2))
+ a=argparse.ArgumentParser();a.add_argument('tree');a.add_argument('--report',default='stage11-report.json');x=a.parse_args();r=scan(x.tree);pathlib.Path(x.report).write_text(json.dumps(r,indent=2)+'\n');print(json.dumps(r,indent=2))
 if __name__=='__main__':main()
