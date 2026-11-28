@@ -6,9 +6,9 @@ on:
       - 'tools/port_log_analyzer.py'
       - 'tools/evidence_correlator.py'
       - 'tools/compatibility_evidence.py'
-      - 'tools/subsystem_intelligence.py'
+      - 'tools/subsystem_intelligence.py'\n      - 'tools/vintf_compare.py'
       - 'tests/test_port_pipeline.py'
-      - 'tests/test_subsystem_intelligence.py'
+      - 'tests/test_subsystem_intelligence.py'\n      - 'tests/test_vintf_compare.py'
       - '.github/workflows/port-evidence-pipeline-tests.yml'
   pull_request:
     paths:
@@ -16,9 +16,9 @@ on:
       - 'tools/port_log_analyzer.py'
       - 'tools/evidence_correlator.py'
       - 'tools/compatibility_evidence.py'
-      - 'tools/subsystem_intelligence.py'
+      - 'tools/subsystem_intelligence.py'\n      - 'tools/vintf_compare.py'
       - 'tests/test_port_pipeline.py'
-      - 'tests/test_subsystem_intelligence.py'
+      - 'tests/test_subsystem_intelligence.py'\n      - 'tests/test_vintf_compare.py'
       - '.github/workflows/port-evidence-pipeline-tests.yml'
 jobs:
   tests:
