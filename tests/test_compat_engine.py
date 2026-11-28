@@ -5,7 +5,7 @@ class CompatEngineTests(unittest.TestCase):
  def test_stage9_is_read_only_and_reports_missing_files(self):
   with tempfile.TemporaryDirectory() as d:
    s=pathlib.Path(d)/'s';v=pathlib.Path(d)/'v';s.mkdir();v.mkdir()
-   (s/'liba.so').write_bytes(b'\\x7fELF');(v/'libb.so').write_bytes(b'not ELF')
+   (s/'liba.so').write_bytes(b'\x7fELF');(v/'libb.so').write_bytes(b'not ELF')
    before=(s/'liba.so').read_bytes()
    r=analyze(s,v)
    self.assertTrue(r['stage9_read_only']);self.assertIn('liba.so',r['system_elf_not_in_vendor_tree'])
