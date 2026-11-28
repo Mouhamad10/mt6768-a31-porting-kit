@@ -1,0 +1,13 @@
+name: System patch tests
+on:
+  push:
+    branches: [main]
+    paths: [tools/system_patch.py, tests/test_system_patch.py, .github/workflows/system-patch-tests.yml]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test reversible property patching
+        run: python3 tests/test_system_patch.py
