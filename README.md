@@ -266,3 +266,11 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 ### 2026-11-28 — reversible patch path-boundary regression test
 
 - Added a test ensuring the property patch helper rejects a symlink whose resolved target lies outside the extracted-tree root, before writing. The outside target is asserted unchanged. CI is pending.
+
+
+### 2026-11-28 — evidence-driven system Port Engine (experimental)
+
+- Added `tools/port_engine.py`: reads the existing boot-signature database, reports matching diagnoses and same-log correlations in JSON, and emits guarded property-patch proposals from explicit maintainer recipes only.
+- Auto-apply is limited to recipe-backed property changes with exact SHA preconditions, path containment, and the existing rollback-capable transactional patcher. No recipe/no match means no modification.
+- Added tests for diagnosis/correlation, proposal vs apply + rollback, and stale recipe rejection; CI is currently running.
+- Scope caveat: this is not yet an autonomous source-level kernel/ELF/APEX/SELinux/init repair agent; it does not infer unknown stack-trace fixes or claim boot success.
