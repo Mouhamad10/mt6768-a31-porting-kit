@@ -1,0 +1,16 @@
+name: Evidence correlation tests
+on:
+  push:
+    paths: ["tools/evidence_correlator.py","tests/test_evidence_correlator.py",".github/workflows/evidence-correlation-tests.yml"]
+  pull_request:
+    paths: ["tools/evidence_correlator.py","tests/test_evidence_correlator.py",".github/workflows/evidence-correlation-tests.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -p "test_evidence_correlator.py" -v
+      - run: python tools/evidence_correlator.py --help
