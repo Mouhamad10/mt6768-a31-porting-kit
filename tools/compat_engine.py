@@ -30,12 +30,12 @@ def inventory(root):
             try: lines=p.read_text(errors='replace').splitlines()
             except OSError: lines=[]
             for i,line in enumerate(lines,1):
-                m=re.match(r'\\s*service\\s+(\\S+)\\s+(.*)',line)
+                m=re.match(r'\s*service\s+(\\S+)\s+(.*)',line)
                 if m:init_services[m.group(1)].append({'file':rel,'line':i,'command':m.group(2)})
         if p.suffix=='.so':
             try: data=p.read_bytes()[:4]
             except OSError: continue
-            if data==b'\\x7fELF':
+            if data==b'\x7fELF':
                 sonames[p.name].append(rel);elf.append({'path':rel,'filename':p.name,'sha256':sha(p)})
     return {'root':str(root),'files':len(files),'properties':dict(props),'init_services':dict(init_services),'elf':elf,'elf_by_filename':dict(sonames)}
 
@@ -70,7 +70,7 @@ def apply_recipe(tree,recipe_path,backup_dir,apply=False):
         if op.get('type')!='set_property':raise ValueError('only set_property operation is supported')
         key=op.get('key');value=op.get('value');rel=op.get('path')
         if not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9._-]+',key):raise ValueError('invalid property key')
-        if not isinstance(value,str) or '\\n' in value or '\\r' in value:raise ValueError('property value must be a single line')
+        if not isinstance(value,str) or '\n' in value or '\r' in value:raise ValueError('property value must be a single line')
         p=safe_target(root,rel);old=p.read_bytes();oldsha=hashlib.sha256(old).hexdigest()
         if op.get('expected_sha256') and op['expected_sha256']!=oldsha:raise ValueError(f'hash precondition failed for {rel}')
         text=old.decode('utf-8');lines=text.splitlines();matches=[i for i,l in enumerate(lines) if l.strip().startswith(key+'=')]
@@ -78,7 +78,7 @@ def apply_recipe(tree,recipe_path,backup_dir,apply=False):
         if len(matches)>1:raise ValueError(f'multiple occurrences of {key} in {rel}; recipe must resolve ambiguity')
         if matches:lines[matches[0]]=key+'='+value
         else:lines.append(key+'='+value)
-        new=('\\n'.join(lines)+'\\n').encode()
+        new=('\n'.join(lines)+'\n').encode()
         if rel in seen:raise ValueError('multiple operations targeting the same file are not supported in one recipe')
         seen.add(rel);plans.append({'path':rel,'file':p,'before_sha256':oldsha,'after_sha256':hashlib.sha256(new).hexdigest(),'old':old,'new':new,'changed':old!=new})
     report={'schema':'a31-stage10-apply-report-v1','mode':'apply' if apply else 'dry_run','operations':[],'modified':False}
@@ -101,6 +101,6 @@ def main():
     args=ap.parse_args()
     try:
         r=analyze(args.system_tree,args.vendor_tree) if args.cmd=='analyze' else apply_recipe(args.tree,args.recipe,args.backup_dir,args.apply)
-        pathlib.Path(args.report).write_text(json.dumps(r,indent=2)+'\\n');print(json.dumps(r,indent=2))
+        pathlib.Path(args.report).write_text(json.dumps(r,indent=2)+'\n');print(json.dumps(r,indent=2))
     except Exception as e:print('ERROR:',e,file=sys.stderr);sys.exit(2)
 if __name__=='__main__':main()
