@@ -1,0 +1,39 @@
+name: GSI Port Workbench
+on:
+  workflow_dispatch:
+    inputs:
+      gsi_url:
+        description: Direct URL to a GSI/image/archive
+        required: true
+        type: string
+      label:
+        description: Output report label
+        required: false
+        default: gsi-analysis
+        type: string
+jobs:
+  intake:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download input with limits
+        env:
+          GSI_URL: ${{ inputs.gsi_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p work report
+          curl -fL --retry 3 --connect-timeout 30 --max-time 1200 --max-filesize 8589934592 -o work/input.bin "$GSI_URL"
+          test -s work/input.bin
+          file work/input.bin
+      - name: Analyze payload (read-only)
+        run: |
+          python3 tools/gsi_workbench.py work/input.bin --out-dir report
+      - name: Publish summary
+        run: |
+          cat report/gsi-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.label }}-report
+          path: report/*
+          if-no-files-found: error
