@@ -9,6 +9,7 @@ from compatibility_evidence import report as compatibility_report
 from subsystem_intelligence import inspect as subsystem_inspect
 from vintf_compare import compare as vintf_compare
 from elf_symbol_compare import compare as elf_symbol_compare
+from linker_namespace_audit import scan as linker_namespace_scan
 
 def run(log_text,target_audit,donor_audit=None):
  log=analyze(log_text);corr=correlate(log,target_audit)
@@ -19,12 +20,15 @@ def run(log_text,target_audit,donor_audit=None):
   score=(4 if e.get("severity")=="high" else 2 if e.get("severity")=="medium" else 1)+2*len(matches)
   ranked.append({"line":e.get("line"),"type":e.get("type"),"severity":e.get("severity"),"excerpt":e.get("text"),"action":e.get("action"),"correlations":matches,"priority_score":score,"ranking_note":"heuristic triage score, not causal attribution"})
  ranked.sort(key=lambda x:(-x["priority_score"],x["line"] or 0))
- return {"schema":"a31-port-evidence-pipeline-v3","log_analysis":log,"correlation":corr,"compatibility":comp,"subsystem_intelligence":subsystem_inspect(log,target_audit),"vintf_comparison":None,"elf_symbol_comparison":None,"ranked_events":ranked,"patch_policy":{"status":"review_only","automatic_changes":False,"patches_generated":False},"limitations":["Scores and lexical correlations do not establish root cause.","Static VINTF and ELF comparisons do not validate runtime compatibility or bootability.","Symbol comparison only compares files at identical relative paths.","No ROM files are modified."]}
+ return {"schema":"a31-port-evidence-pipeline-v3","log_analysis":log,"correlation":corr,"compatibility":comp,"subsystem_intelligence":subsystem_inspect(log,target_audit),"vintf_comparison":None,"elf_symbol_comparison":None,"linker_namespace_audit":None,"ranked_events":ranked,"patch_policy":{"status":"review_only","automatic_changes":False,"patches_generated":False},"limitations":["Scores and lexical correlations do not establish root cause.","Static VINTF, ELF and linker namespace inventories do not validate runtime compatibility or bootability.","Symbol comparison only compares files at identical relative paths.","No ROM files are modified."]}
 
 def markdown(r):
  lines=["# Android Port Evidence Pipeline","> Read-only triage report. No changes or patches were applied.","","## Summary",f"- Log lines: {r['log_analysis']['line_count']}",f"- Events: {len(r['log_analysis']['events'])}",f"- Correlated events: {r['correlation']['correlated_event_count']}",f"- Donor audit: {'included' if r['compatibility'] else 'not supplied'}","","## Ranked events"]
  for x in r["ranked_events"]:lines.append(f"- **{x['priority_score']} | {x['severity']} | line {x['line']} | {x['type']}** — {x['excerpt']}\n  - Review: {x['action']}")
  v=r.get("vintf_comparison")
+ if r.get("linker_namespace_audit"):
+  ln=r["linker_namespace_audit"]; lines+=["","## Linker namespace config inventory",f"- Config files: {len(ln['config_files'])}",f"- Namespace sections: {len(ln['namespaces'])}"]
+  for ns in ln["namespaces"]: lines.append(f"- {ns['file']} [{ns['section']}]")
  if v:
   lines+=["","## Static VINTF",f"- Donor-only: {len(v['donor_only_entries'])}",f"- Shared: {len(v['shared_entries'])}"]
   for x in v["donor_only_entries"]:lines.append(f"- {x['package']} / {x['interface']} / {x['instance']}")
