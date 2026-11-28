@@ -33,7 +33,8 @@ def recipe_ops(root,recipes,ids):
    before=p.read_bytes()
    if sha(before)!=r["expected_sha256"]:
     rejected.append({"recipe":rid,"reason":"SHA precondition mismatch"});continue
-   seen.add(p);if typ=="set_property": op={"op":typ,"path":path,"key":key,"value":str(r["value"])}
+   seen.add(p);
+   if typ=="set_property": op={"op":typ,"path":path,"key":key,"value":str(r["value"])}
    else:
     count=p.read_text(encoding="utf-8").count(r["before_text"])
     if count!=1:
