@@ -41,7 +41,7 @@ def compare(target,donor):
   de={key(s) for s in ds if s["defined"] and s["binding"] in ("GLOBAL","WEAK")}
   missing=sorted(de-te)
   if missing:results.append({"path":path,"donor_exports_absent_in_target":[{"name":x[0],"version":x[1],"type":x[2]} for x in missing]})
- return {"schema":"a31-elf-symbol-compare-v1","target_files":len(t),"donor_files":len(d),"matched_paths":len(tmap.keys()&dmap.keys()),"symbol_gaps":results,"limitations":["Only compares files with identical relative paths; renamed or differently packaged libraries are not matched.","readelf dynsym inventory is static; symbol ABI, calling conventions, namespace visibility, relocation behavior and runtime loading are not validated.","A donor export absent in target is not necessarily required by the target ROM.","Not a substitute for linker/runtime testing."]}
+ return {"schema":"a31-elf-symbol-compare-v1","target_files":len(t),"donor_files":len(d),"matched_paths":len(set(str(p.relative_to(target)) for p in pathlib.Path(target).rglob("*") if p.is_file() and not p.is_symlink()) & set(str(p.relative_to(donor)) for p in pathlib.Path(donor).rglob("*") if p.is_file() and not p.is_symlink())),"symbol_gaps":results,"limitations":["Only compares files with identical relative paths; renamed or differently packaged libraries are not matched.","readelf dynsym inventory is static; symbol ABI, calling conventions, namespace visibility, relocation behavior and runtime loading are not validated.","A donor export absent in target is not necessarily required by the target ROM.","Not a substitute for linker/runtime testing."]}
 
 def main():
  p=argparse.ArgumentParser();p.add_argument("target");p.add_argument("donor");p.add_argument("--json",default="elf-symbol-compare.json");a=p.parse_args()
