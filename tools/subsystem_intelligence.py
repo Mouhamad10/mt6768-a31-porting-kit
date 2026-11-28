@@ -29,7 +29,7 @@ def inspect(log_data,audit,tree_root=None):
   if ev.get("type")=="selinux_denial" or re.search(r"avc:\\s*denied",line,re.I):
    tokens={}
    for key in ("scontext","tcontext","tclass","permissive"):
-    m=re.search(r"\\b"+key+r"=([^\\s]+)",line);tokens[key]=m.group(1) if m else None
+    m=re.search(r"\b"+key+r"=([^\s]+)",line);tokens[key]=m.group(1) if m else None
    perms=re.search(r"{([^}]+)}",line);tokens["permissions"]=perms.group(1).strip() if perms else None
    out["selinux_denials"].append({"line":ev.get("line"),"text":line[:500],"parsed":tokens})
   if ev.get("type") in ("service_crash","framework","zygote"):
