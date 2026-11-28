@@ -18,10 +18,7 @@ def fs_type(p):
 def choose(names):
  candidates=[n for n in names if pathlib.PurePosixPath(n).name.lower() in IMAGE_NAMES]
  if candidates:return sorted(candidates,key=lambda n:(pathlib.PurePosixPath(n).name.lower()!='system.img',len(n)))[0]
- # compatibility fallback for legacy extraction code: prefer names containing "system", else first entry
- nonempty=[n for n in names if n and not n.endswith('/')]
- if not nonempty:raise ValueError('archive contains no usable entries')
- return sorted(nonempty,key=lambda n:('system' not in pathlib.PurePosixPath(n).name.lower(),len(n)))[0]
+ raise ValueError('archive does not contain a recognized system image')
 select_image=choose
 
 def bounded_copy(src,dst,limit=MAX_OUTPUT):
