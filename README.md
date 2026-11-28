@@ -256,3 +256,8 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - Added analyzer regression cases for init import/trigger/service extraction and graceful recording of malformed ELF candidates.
 - Added comparison regression coverage for duplicate SONAME candidates, preserving multiple paths instead of flattening them.
 - These additions are source-level commits; their CI outcomes are still pending confirmation.
+
+
+### 2026-11-28 — malformed ELF handling
+
+- Hardened the analyzer's `readelf` wrapper to treat nonzero tool exit status as a parse failure. Malformed/truncated ELF candidates are recorded under audit errors rather than silently producing incomplete ABI metadata. Regression test added earlier for this path; CI confirmation pending.
