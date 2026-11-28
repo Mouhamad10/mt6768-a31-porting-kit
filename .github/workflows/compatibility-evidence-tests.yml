@@ -1,0 +1,16 @@
+name: Compatibility evidence tests
+on:
+  push:
+    paths: ["tools/compatibility_evidence.py","tests/test_compatibility_evidence.py",".github/workflows/compatibility-evidence-tests.yml"]
+  pull_request:
+    paths: ["tools/compatibility_evidence.py","tests/test_compatibility_evidence.py",".github/workflows/compatibility-evidence-tests.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -p "test_compatibility_evidence.py" -v
+      - run: python tools/compatibility_evidence.py --help
