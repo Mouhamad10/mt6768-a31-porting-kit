@@ -195,3 +195,11 @@ New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — what the r
 ## System compatibility audit (experimental)
 
 A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dependencies/SONAME duplicates, property value conflicts, init scripts, APK/APEX and overlay paths. It deliberately does not delete duplicate libraries or change properties/HAL services automatically: duplicate names are not evidence of boot-breaking conflict. See [docs/system-tree-audit.md](docs/system-tree-audit.md). **Actual Flyme OS 16 image testing is pending** because the Pixeldrain payload could not be downloaded in this session. This analyzer is not yet an automated image extractor or a verified porting patch engine.
+
+
+### 2026-11-28 — expanded system-side evidence inventory and guarded reversible patches
+
+- Expanded the read-only analyzer to capture init service declarations, linker-config files, fstab candidates and filename-based HAL/service leads alongside ELF dependency hashes, SONAME findings, property conflicts, APK/APEX and overlays.
+- Added a reversible extracted-tree property patch helper with SHA-256 preconditions, rollback manifests and guarded rollback; it refuses a stale source hash or changed patched file.
+- Added synthetic tests and CI for patch apply/rollback and hash rejection. Real-image testing remains pending; this is not a boot-compatibility verdict.
+- Layout rule: `super` is a dynamic-partition container; logical `system`, `vendor`, `odm`, `product` are distinct, and this kit does not assume a standalone `system_ext` image. The system-side analyzer scans the supplied tree including system_ext files when merged there.
