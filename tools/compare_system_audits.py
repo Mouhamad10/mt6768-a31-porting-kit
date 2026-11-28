@@ -3,7 +3,10 @@
 import argparse,json,pathlib
 def load(path):
  d=json.loads(pathlib.Path(path).read_text())
- if not isinstance(d.get('elf'),list):raise ValueError('Report lacks ELF inventory')
+ if not isinstance(d,dict) or not isinstance(d.get('elf'),list):raise ValueError('Report lacks ELF inventory')
+ for e in d['elf']:
+  if not isinstance(e,dict) or not isinstance(e.get('path'),str):raise ValueError('Malformed ELF inventory entry')
+  if e.get('needed') is not None and not isinstance(e.get('needed'),list):raise ValueError('Malformed DT_NEEDED field')
  return d
 def idx(d):
  x={}
