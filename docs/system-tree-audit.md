@@ -4,10 +4,15 @@ Run on an **extracted system-side directory** (including files physically under 
 
 `python3 tools/system_tree_audit.py TREE --report audit.json --props-report audit.txt`
 
-The read-only analyzer inventories ELF SONAME/DT_NEEDED/hash, duplicate SONAME candidates, property conflicts with file and line, init RC files and service declarations, linker-config files, fstab candidates, filename-based HAL/service hints, APK/APEX and overlay paths.
+The read-only analyzer inventories ELF SONAME/DT_NEEDED/hash plus ELF class, machine, endianness, interpreter and RPATH/RUNPATH metadata, duplicate SONAME candidates, property conflicts with file and line, init RC files and service declarations, linker-config files, fstab candidates, filename-based HAL/service hints, APK/APEX and overlay paths.
 
 **Interpretation limits:** duplicate SONAME is not proof of a linker collision; property collisions depend on partition and load precedence; filename hints do not establish HAL availability or registration; init inventory is not runtime service state. Correlate findings with target vendor manifests, VINTF, linker namespace definitions, SELinux, logs and actual boot.
 
 The Flyme OS Android 16 image test is **not completed**: the previously supplied Pixeldrain payload could not be fetched in the environment. The analyzer has not been run against that real image. It does not mount or extract images and does not modify files.
 
 Related reversible helper: [docs/reversible-system-patches.md](reversible-system-patches.md). That helper is limited to hash-guarded property updates on an extracted tree with a rollback manifest; it is not a compatibility verdict.
+
+
+## ELF ABI triage
+
+Each ELF inventory record includes ABI metadata collected from `readelf`: class (32/64-bit), machine architecture, byte order, program interpreter (when present), and RPATH/RUNPATH. These fields help flag architecture and linker-search-path mismatches when comparing donor and target trees. The analyzer does not resolve Android linker namespaces or prove that any dependency can be loaded at runtime; comparison and namespace-aware validation remain separate steps.
