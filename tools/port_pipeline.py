@@ -11,7 +11,7 @@ from port_log_analyzer import analyze
 from evidence_correlator import correlate
 from compatibility_evidence import report as compatibility_report
 from subsystem_intelligence import inspect as subsystem_inspect
-from vintf_compare import compare as vintf_compare
+from vintf_compare import compare as vintf_compare\nfrom elf_symbol_compare import compare as elf_symbol_compare
 
 
 def run(log_text, target_audit, donor_audit=None):
@@ -30,7 +30,7 @@ def run(log_text, target_audit, donor_audit=None):
         ranked.append(base)
     ranked.sort(key=lambda x: (-x["priority_score"], x["line"] or 0))
     return {"schema": "a31-port-evidence-pipeline-v2", "log_analysis": log, "correlation": corr,
-            "compatibility": comp, "subsystem_intelligence": subsystem, "vintf_comparison": None,
+            "compatibility": comp, "subsystem_intelligence": subsystem, "vintf_comparison": None, "elf_symbol_comparison": None,
             "ranked_events": ranked, "patch_policy": {"status": "review_only",
             "automatic_changes": False, "patches_generated": False},
             "limitations": ["Scores prioritize review and do not prove root cause.",
@@ -72,7 +72,7 @@ def main():
     p.add_argument("target_audit")
     p.add_argument("--donor-audit")
     p.add_argument("--tree", help="optional extracted target tree for static subsystem inventory")
-    p.add_argument("--donor-tree", help="optional extracted donor tree for static VINTF comparison")
+    p.add_argument("--donor-tree", help="optional extracted donor tree for static VINTF and ELF symbol comparison")
     p.add_argument("--json", default="port-evidence-pipeline.json")
     p.add_argument("--markdown", default="port-evidence-pipeline.md")
     a = p.parse_args()
