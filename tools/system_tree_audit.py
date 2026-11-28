@@ -8,7 +8,9 @@ def sha(p):
   for b in iter(lambda:f.read(1024*1024),b''):h.update(b)
  return h.hexdigest()
 def readelf(p,flag):
- return subprocess.run(['readelf',flag,str(p)],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30).stdout
+ r=subprocess.run(['readelf',flag,str(p)],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+ if r.returncode: raise RuntimeError('readelf '+flag+' failed: '+r.stderr.strip())
+ return r.stdout
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('tree');ap.add_argument('--report',default='system-audit.json');ap.add_argument('--props-report',default='system-audit.txt');args=ap.parse_args()
  root=P(args.tree).resolve()
