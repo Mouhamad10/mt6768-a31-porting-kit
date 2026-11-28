@@ -1,0 +1,39 @@
+name: Compatibility Stages 11-12
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        required: true
+        type: choice
+        options: [stage11, stage12]
+      tree:
+        description: Extracted tree path
+        required: true
+        default: work/tree
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test engines
+        run: python3 -m unittest discover -s tests -v
+      - name: Run Stage 11 or 12
+        env:
+          STAGE: ${{ inputs.stage }}
+          TREE: ${{ inputs.tree }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          if [[ "$STAGE" == stage11 ]]; then
+            python3 tools/hal_vendor_analyzer.py "$TREE" --report reports/stage11.json
+          elif [[ "$STAGE" == stage12 ]]; then
+            python3 tools/port_validator.py "$TREE" --report reports/stage12.json
+          else
+            exit 2
+          fi
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stages-11-12-report
+          path: reports/*
