@@ -1,0 +1,16 @@
+name: Patch draft builder tests
+on:
+  push:
+    paths: ["tools/patch_draft_builder.py","tests/test_patch_draft_builder.py",".github/workflows/patch-draft-builder-tests.yml"]
+  pull_request:
+    paths: ["tools/patch_draft_builder.py","tests/test_patch_draft_builder.py",".github/workflows/patch-draft-builder-tests.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -p "test_patch_draft_builder.py" -v
+      - run: python tools/patch_draft_builder.py --help
