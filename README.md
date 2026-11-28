@@ -203,3 +203,9 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - Added a reversible extracted-tree property patch helper with SHA-256 preconditions, rollback manifests and guarded rollback; it refuses a stale source hash or changed patched file.
 - Added synthetic tests and CI for patch apply/rollback and hash rejection. Real-image testing remains pending; this is not a boot-compatibility verdict.
 - Layout rule: `super` is a dynamic-partition container; logical `system`, `vendor`, `odm`, `product` are distinct, and this kit does not assume a standalone `system_ext` image. The system-side analyzer scans the supplied tree including system_ext files when merged there.
+
+
+### 2026-11-28 — read-only image extraction stage
+
+- Added `tools/system_image_extract.py` to extract supported raw ext4/EROFS system images without mounting or writing to the image; it refuses unknown formats and non-empty destinations.
+- Added extraction guard tests and CI. Sparse/compressed input still requires normalization first; extraction fidelity must be verified and is not boot validation.
