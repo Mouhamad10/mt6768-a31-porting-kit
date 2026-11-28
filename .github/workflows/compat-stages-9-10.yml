@@ -1,0 +1,52 @@
+name: Compatibility Stages 9-10 (Experimental)
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Stage 9 analyze or Stage 10 guarded recipe
+        required: true
+        type: choice
+        options: [analyze, recipe-dry-run, recipe-apply]
+      system_tree:
+        description: Workspace path to extracted system tree (default work/system)
+        required: true
+        default: work/system
+      vendor_tree:
+        description: Workspace path to extracted A31 vendor tree (default work/vendor)
+        required: true
+        default: work/vendor
+      recipe_json:
+        description: Stage 10 recipe JSON path
+        required: false
+        default: compat-recipe.json
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run compatibility engine tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Stage 9 analyze or Stage 10 recipe
+        env:
+          STAGE: ${{ inputs.stage }}
+          SYSTEM_TREE: ${{ inputs.system_tree }}
+          VENDOR_TREE: ${{ inputs.vendor_tree }}
+          RECIPE: ${{ inputs.recipe_json }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          if [[ "$STAGE" == analyze ]]; then
+            python3 tools/compat_engine.py analyze "$SYSTEM_TREE" "$VENDOR_TREE" --report reports/stage9.json
+          elif [[ "$STAGE" == recipe-dry-run ]]; then
+            python3 tools/compat_engine.py apply "$SYSTEM_TREE" "$RECIPE" --report reports/stage10-dry-run.json
+          elif [[ "$STAGE" == recipe-apply ]]; then
+            python3 tools/compat_engine.py apply "$SYSTEM_TREE" "$RECIPE" --apply --backup-dir work/compat-backups --report reports/stage10-apply.json
+          else
+            echo "Unknown stage"; exit 2
+          fi
+      - name: Upload diagnostic report and backups
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-stages-9-10
+          path: reports/*
