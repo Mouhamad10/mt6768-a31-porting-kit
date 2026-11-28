@@ -225,3 +225,9 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - Writes use staged temporary files and replace, and failures during the write sequence trigger restoration of already-written targets.
 - Duplicate active assignments for the same property are collapsed into a single assignment while comment lines remain untouched; added regression tests for preflight refusal and duplicate keys.
 - These are extracted-tree operations only. Property semantics and device compatibility still require evidence and runtime validation.
+
+
+### 2026-11-28 — init graph evidence expanded
+
+- Analyzer now captures init `import` declarations and `on` trigger blocks in addition to service declarations. These are textual leads to dependency/activation paths, not runtime state.
+- Regression fixture verifies import and trigger extraction.
