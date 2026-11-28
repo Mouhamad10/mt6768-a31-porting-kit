@@ -237,3 +237,9 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 
 - The system-tree audit now records ELF class, machine architecture, endianness, requested interpreter and RPATH/RUNPATH in addition to SONAME, DT_NEEDED and SHA-256.
 - Added a compiler-generated shared-library regression test for those fields. CI verification is pending for this commit; this metadata is evidence for donor/target comparison, not proof of Android namespace resolution or boot compatibility.
+
+
+### 2026-11-28 — donor/target ELF audit comparison utility
+
+- Added `tools/compare_system_audits.py` to compare analyzer JSON inventories: SONAME names missing from the donor, DT_NEEDED names missing from each inventory, and ABI metadata differences for shared SONAMEs.
+- Added regression tests and a dedicated Actions workflow. The report explicitly does not assess Android linker namespaces, symbol compatibility or boot/runtime compatibility. No libraries are copied or modified by the comparison.
