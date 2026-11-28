@@ -288,3 +288,12 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - Added `tools/boot_evidence.py`: read-only line-oriented extraction of kernel fault, tombstone/signal, reboot, linker, SELinux denial, init service and APEX error events.
 - Outputs ordered event excerpts and repeated-event clusters with explicit limitations; input-line ordering is not causal proof, and teardown collateral may appear.
 - Added regression tests and CI. This is evidence extraction only—no patch generation or device modification.
+
+
+### 2026-11-28 — Multi-source port-log analysis v2
+
+- Added `tools/port_log_analyzer.py` for mixed console/kernel, ramoops/console-ramoops, pmsg/p-message, logcat and dmesg-style text (heuristic source recognition).
+- Categorizes SELinux denials, linker/ABI failures, repeated-library conflict indicators, service crashes, APEX/init, reboot, mount/AVB, VINTF, property, zygote/framework and storage events.
+- Produces grouped fingerprints, occurrence counts, prioritized review guidance and Markdown/JSON reports.
+- Patch planning is deliberately review-only: no blanket SELinux relaxation, arbitrary service disabling, library copying, or log-driven filesystem edits. Any concrete patch must be tree-informed, hash/path guarded and reversible.
+- Added tests and dedicated CI workflow.
