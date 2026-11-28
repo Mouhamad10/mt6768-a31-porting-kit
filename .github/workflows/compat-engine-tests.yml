@@ -4,12 +4,18 @@ on:
     branches: [main, feature/stages-9-10-compatibility-engine]
     paths:
       - tools/compat_engine.py
+      - tools/hal_vendor_analyzer.py
+      - tools/port_validator.py
       - tests/test_compat_engine.py
+      - tests/test_stages_11_12.py
       - .github/workflows/compat-engine-tests.yml
   pull_request:
     paths:
       - tools/compat_engine.py
+      - tools/hal_vendor_analyzer.py
+      - tools/port_validator.py
       - tests/test_compat_engine.py
+      - tests/test_stages_11_12.py
       - .github/workflows/compat-engine-tests.yml
 jobs:
   tests:
