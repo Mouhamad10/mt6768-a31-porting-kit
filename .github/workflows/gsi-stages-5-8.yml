@@ -79,9 +79,12 @@ jobs:
           python3 tools/gsi_fs_inspect.py work/system-erofs.img --json work/fs-inspection.json > work/fs-inspection.txt
           python3 tools/system_tree_audit.py work/tree --report work/tree-audit.json --props-report work/tree-audit.txt
       - name: Stage 8 - package reproducibility evidence and artifact
+        env:
+          LABEL: ${{ inputs.label }}
         run: |
           set -euo pipefail
           mkdir -p dist
+          if ! [[ "$LABEL" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then echo "Invalid artifact label"; exit 1; fi
           cp work/system-erofs.img dist/system.img
           cp work/system.sha256 dist/
           cp work/fs-inspection.json work/fs-inspection.txt work/stage5-recipe-report.json work/tree-audit.json work/tree-audit.txt dist/
@@ -92,7 +95,7 @@ jobs:
           Extraction/rebuild may alter metadata and xattrs; inspect and test on-device only with a recovery plan.
           No vendor/odm compatibility assessment and no boot validation were performed.
           EOF
-          cd dist && zip -9 -r ${{ inputs.label }}-stages5-8.zip . && cd ..
+          cd dist && zip -9 -r "${LABEL}-stages5-8.zip" . && cd ..
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
