@@ -30,7 +30,7 @@ def inventory(root):
             try: lines=p.read_text(errors='replace').splitlines()
             except OSError: lines=[]
             for i,line in enumerate(lines,1):
-                m=re.match(r'\s*service\s+(\\S+)\s+(.*)',line)
+                m=re.match(r'\s*service\s+(\S+)\s+(.*)',line)
                 if m:init_services[m.group(1)].append({'file':rel,'line':i,'command':m.group(2)})
         if p.suffix=='.so':
             try: data=p.read_bytes()[:4]
