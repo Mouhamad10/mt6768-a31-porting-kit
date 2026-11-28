@@ -29,3 +29,20 @@ python3 tools/compare_system_audits.py target.json donor.json --output elf-compa
 ```
 
 The comparison reports target SONAME names absent from the donor inventory, aggregate DT_NEEDED names missing from either inventory, and ABI metadata differences for shared SONAME names. It is a triage report, not an instruction to copy files: namespace visibility, symbol compatibility and HAL/runtime requirements must be assessed before changes.
+
+
+## Static VINTF donor/target comparison
+
+The optional `tools/vintf_compare.py` inventories `<hal>` interface/instance entries from XML under two extracted trees and lists donor-only entries and shared entries. It is deliberately not a full VINTF matrix solver: it does not prove framework/device compatibility, transport viability, runtime registration or HAL functionality. Use the report as a review lead only.
+
+Standalone:
+
+```bash
+python3 tools/vintf_compare.py target-tree donor-tree --output vintf-static-comparison.json
+```
+
+Integrated pipeline, with both trees supplied:
+
+```bash
+python3 tools/port_pipeline.py boot.log target-audit.json --tree target-tree --donor-tree donor-tree --json report.json --markdown report.md
+```
