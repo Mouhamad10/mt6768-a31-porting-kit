@@ -1,0 +1,15 @@
+name: System image extraction tests
+on:
+  push:
+    branches: [main]
+    paths: [tools/system_image_extract.py, tests/test_system_image_extract.py, .github/workflows/system-image-extract-tests.yml]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install extraction tools
+        run: sudo apt-get update && sudo apt-get install -y e2fsprogs erofs-utils
+      - name: Run guard tests
+        run: python3 tests/test_system_image_extract.py
