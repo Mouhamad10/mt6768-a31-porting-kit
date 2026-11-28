@@ -38,6 +38,11 @@ def main():
     # Extract init service declarations and their executable/arguments; trigger text remains as evidence.
     for m in re.finditer(r'(?m)^\s*service\s+(\S+)\s+(.*)$',txt):
      init_services.append({'file':rel,'line':txt[:m.start()].count('\n')+1,'name':m.group(1),'command':m.group(2).strip()})
+    for ln,line in enumerate(txt.splitlines(),1):
+     im=re.match(r'\\s*import\\s+(\\S+)',line)
+     if im:init_imports.append({'file':rel,'line':ln,'target':im.group(1)})
+     ac=re.match(r'\\s*on\\s+(.+)',line)
+     if ac:init_actions.append({'file':rel,'line':ln,'trigger':ac.group(1)})
    if p.name.startswith('ld.config') or p.name.endswith('linker.config.json'):
     ldconfig.append({'path':rel,'sha256':sha(p)})
    if p.suffix=='.apk':apks.append(rel)
