@@ -5,7 +5,7 @@ class PipelineTests(unittest.TestCase):
  def test_pipeline_without_donor(self):
   audit={"elf":[],"init_services":[],"properties":[],"apex":[],"duplicate_sonames":{}}
   r=run("CANNOT LINK EXECUTABLE: library libmissing.so not found",audit)
-  self.assertEqual(r["schema"],"a31-port-evidence-pipeline-v1")
+  self.assertEqual(r["schema"],"a31-port-evidence-pipeline-v3")
   self.assertEqual(len(r["ranked_events"]),1)
   self.assertIsNone(r["compatibility"])
   self.assertFalse(r["patch_policy"]["automatic_changes"])
