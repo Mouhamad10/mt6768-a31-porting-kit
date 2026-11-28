@@ -11,4 +11,11 @@ class Compare(unittest.TestCase):
   self.assertEqual(r['target_needed_names_missing_from_donor_inventory'],['b.so','missing.so'])
   self.assertTrue(r['shared_soname_abi_evidence'][0]['abi_differences'])
   self.assertEqual(r['runtime_compatibility'],'NOT ASSESSED')
+ def test_duplicate_sonames_are_preserved_and_not_flattened(self):
+  target={'elf':[{'path':'a/libx.so','soname':'libx.so','needed':[],'machine':'AArch64','elf_class':'ELF64'},{'path':'b/libx.so','soname':'libx.so','needed':[],'machine':'AArch64','elf_class':'ELF64'}]}
+  donor={'elf':[{'path':'donor/libx.so','soname':'libx.so','needed':[],'machine':'AArch64','elf_class':'ELF64'}]}
+  r=mod.compare(target,donor)
+  row=r['shared_soname_abi_evidence'][0]
+  self.assertEqual(len(row['target_paths']),2)
+  self.assertEqual(row['abi_differences'],[])
 if __name__=='__main__':unittest.main()
