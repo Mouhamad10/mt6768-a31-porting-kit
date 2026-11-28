@@ -16,3 +16,16 @@ Related reversible helper: [docs/reversible-system-patches.md](reversible-system
 ## ELF ABI triage
 
 Each ELF inventory record includes ABI metadata collected from `readelf`: class (32/64-bit), machine architecture, byte order, program interpreter (when present), and RPATH/RUNPATH. These fields help flag architecture and linker-search-path mismatches when comparing donor and target trees. The analyzer does not resolve Android linker namespaces or prove that any dependency can be loaded at runtime; comparison and namespace-aware validation remain separate steps.
+
+
+## Compare donor and target reports
+
+Run the analyzer separately against each extracted tree, then compare the JSON inventories:
+
+```sh
+python3 tools/system_tree_audit.py TARGET_TREE --report target.json --props-report target.txt
+python3 tools/system_tree_audit.py DONOR_TREE --report donor.json --props-report donor.txt
+python3 tools/compare_system_audits.py target.json donor.json --output elf-compare.json
+```
+
+The comparison reports target SONAME names absent from the donor inventory, aggregate DT_NEEDED names missing from either inventory, and ABI metadata differences for shared SONAME names. It is a triage report, not an instruction to copy files: namespace visibility, symbol compatibility and HAL/runtime requirements must be assessed before changes.
