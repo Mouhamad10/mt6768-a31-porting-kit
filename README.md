@@ -249,3 +249,10 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 
 - During a targeted source inspection after expanding ELF ABI collection, malformed generated Python text was detected in the analyzer. Replaced the affected analyzer body with a clean implementation and retained the ABI fields, read-only behavior, inventory and CLI outputs.
 - This was caught by source inspection before counting the expanded analyzer as validated. Awaiting fresh CI for the repair and the comparison utility.
+
+
+### 2026-11-28 — audit regression coverage expansion
+
+- Added analyzer regression cases for init import/trigger/service extraction and graceful recording of malformed ELF candidates.
+- Added comparison regression coverage for duplicate SONAME candidates, preserving multiple paths instead of flattening them.
+- These additions are source-level commits; their CI outcomes are still pending confirmation.
