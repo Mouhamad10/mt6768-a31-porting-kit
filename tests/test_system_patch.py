@@ -29,4 +29,11 @@ class PatchTest(unittest.TestCase):
    subprocess.run(['python3',str(TOOL),'apply',str(root),str(patch),'--rollback-manifest',str(root/'rb.json')],check=True)
    self.assertEqual(p.read_text(),'x=new\n#x=comment\n')
 
+ def test_path_escape_symlink_is_rejected(self):
+  with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside:
+   root=pathlib.Path(td);target=pathlib.Path(outside)/'secret.prop';target.write_text('x=1\\n')
+   (root/'link').symlink_to(target)
+   patch=root/'patch.json';patch.write_text(json.dumps({'schema':'a31-system-patch-v1','operations':[{'op':'set_property','path':'link','key':'x','value':'2','expected_sha256':hashlib.sha256(target.read_bytes()).hexdigest()}]}))
+   r=subprocess.run(['python3',str(TOOL),'apply',str(root),str(patch)],capture_output=True)
+   self.assertNotEqual(r.returncode,0);self.assertEqual(target.read_text(),'x=1\\n')
 if __name__=='__main__':unittest.main()
