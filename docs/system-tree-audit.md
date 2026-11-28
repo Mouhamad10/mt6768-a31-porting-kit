@@ -1,22 +1,13 @@
-# A31 System Compatibility Engine (experimental)
+# System compatibility audit (experimental)
 
-This revision adds an evidence-first **system-tree audit** stage to the GSI porting toolkit.
+Run on an **extracted system-side directory** (including files physically under the system root that represent system_ext; no standalone system_ext partition is assumed):
 
-## Scans
-- ELF files using `readelf`: path, SONAME, DT_NEEDED and SHA-256.
-- Duplicate SONAME candidates, reported but not automatically removed.
-- Conflicting property values across files, including file path and line.
-- Init rc, APK, APEX and overlay inventory.
+`python3 tools/system_tree_audit.py TREE --report audit.json --props-report audit.txt`
 
-## Why duplicate libraries are not automatically deleted
-Duplicate names alone do not establish a harmful conflict. Android linker namespaces, partition precedence, ABI and service-specific loading determine which library is used. Removing a library based only on name can make the image unbootable. Findings must be correlated with logs and target environment.
+The read-only analyzer inventories ELF SONAME/DT_NEEDED/hash, duplicate SONAME candidates, property conflicts with file and line, init RC files and service declarations, linker-config files, fstab candidates, filename-based HAL/service hints, APK/APEX and overlay paths.
 
-## Flyme OS Android 16 test status
-The Pixeldrain download supplied in chat could not be fetched in this environment because DNS/network access was unavailable. **This code has not been tested on the actual Flyme image.** The audit operates on an extracted system directory. Automated image extraction/mounting and reversible patch application are not yet implemented in this stage.
+**Interpretation limits:** duplicate SONAME is not proof of a linker collision; property collisions depend on partition and load precedence; filename hints do not establish HAL availability or registration; init inventory is not runtime service state. Correlate findings with target vendor manifests, VINTF, linker namespace definitions, SELinux, logs and actual boot.
 
-## Run
-```bash
-python3 tools/system_tree_audit.py /path/to/extracted/system --report audit.json --props-report audit.txt
-```
+The Flyme OS Android 16 image test is **not completed**: the previously supplied Pixeldrain payload could not be fetched in the environment. The analyzer has not been run against that real image. It does not mount or extract images and does not modify files.
 
-Read-only inventory only. No automatic library deletion, property rewriting, HAL disabling or boot success claim.
+Related reversible helper: [docs/reversible-system-patches.md](reversible-system-patches.md). That helper is limited to hash-guarded property updates on an extracted tree with a rollback manifest; it is not a compatibility verdict.
