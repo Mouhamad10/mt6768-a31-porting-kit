@@ -297,3 +297,14 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - Produces grouped fingerprints, occurrence counts, prioritized review guidance and Markdown/JSON reports.
 - Patch planning is deliberately review-only: no blanket SELinux relaxation, arbitrary service disabling, library copying, or log-driven filesystem edits. Any concrete patch must be tree-informed, hash/path guarded and reversible.
 - Added tests and dedicated CI workflow.
+
+
+## Unified evidence pipeline
+
+The read-only `tools/port_pipeline.py` orchestrates log analysis, inventory correlation, optional donor/target compatibility evidence, and a ranked event review list.
+
+```bash
+python3 tools/port_pipeline.py boot.log target-audit.json --donor-audit donor-audit.json --json report.json --markdown report.md
+```
+
+The donor audit is optional. Rankings are heuristic and do not establish causality. The pipeline does not generate or apply patches, alter ROM trees, or certify boot compatibility.
