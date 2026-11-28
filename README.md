@@ -231,3 +231,9 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 
 - Analyzer now captures init `import` declarations and `on` trigger blocks in addition to service declarations. These are textual leads to dependency/activation paths, not runtime state.
 - Regression fixture verifies import and trigger extraction.
+
+
+### 2026-11-28 — ELF ABI/linker metadata inventory
+
+- The system-tree audit now records ELF class, machine architecture, endianness, requested interpreter and RPATH/RUNPATH in addition to SONAME, DT_NEEDED and SHA-256.
+- Added a compiler-generated shared-library regression test for those fields. CI verification is pending for this commit; this metadata is evidence for donor/target comparison, not proof of Android namespace resolution or boot compatibility.
