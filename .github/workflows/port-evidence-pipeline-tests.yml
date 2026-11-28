@@ -1,0 +1,27 @@
+name: Port Evidence Pipeline Tests
+on:
+  push:
+    paths:
+      - 'tools/port_pipeline.py'
+      - 'tools/port_log_analyzer.py'
+      - 'tools/evidence_correlator.py'
+      - 'tools/compatibility_evidence.py'
+      - 'tests/test_port_pipeline.py'
+      - '.github/workflows/port-evidence-pipeline-tests.yml'
+  pull_request:
+    paths:
+      - 'tools/port_pipeline.py'
+      - 'tools/port_log_analyzer.py'
+      - 'tools/evidence_correlator.py'
+      - 'tools/compatibility_evidence.py'
+      - 'tests/test_port_pipeline.py'
+      - '.github/workflows/port-evidence-pipeline-tests.yml'
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_port_pipeline.py' -v
