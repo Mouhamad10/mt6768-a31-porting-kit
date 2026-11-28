@@ -9,10 +9,14 @@ on:
       - 'tools/subsystem_intelligence.py'
       - 'tools/vintf_compare.py'
       - 'tools/elf_symbol_compare.py'
+      - 'tools/linker_namespace_audit.py'
+      - 'tools/linker_namespace_audit.py'
       - 'tests/test_port_pipeline.py'
       - 'tests/test_subsystem_intelligence.py'
       - 'tests/test_vintf_compare.py'
       - 'tests/test_elf_symbol_compare.py'
+      - 'tests/test_linker_namespace_audit.py'
+      - 'tests/test_linker_namespace_audit.py'
       - '.github/workflows/port-evidence-pipeline-tests.yml'
   pull_request:
     paths:
@@ -41,3 +45,4 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_subsystem_intelligence.py' -v
       - run: python -m unittest discover -s tests -p 'test_vintf_compare.py' -v
       - run: python -m unittest discover -s tests -p 'test_elf_symbol_compare.py' -v
+      - run: python -m unittest discover -s tests -p 'test_linker_namespace_audit.py' -v
