@@ -281,3 +281,10 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - Recipe parsing now rejects incomplete recipe records, path escapes, stale hashes, and duplicate target files before emitting/applying changes.
 - Added regression tests for recipe path symlink escape and duplicate target file ambiguity.
 - Prior engine commit CI completed successfully on the diagnosis, proposal/apply/rollback and stale-hash tests. The latest hardening/test commit CI is pending final confirmation.
+
+
+### 2026-11-28 — Ordered boot evidence extraction
+
+- Added `tools/boot_evidence.py`: read-only line-oriented extraction of kernel fault, tombstone/signal, reboot, linker, SELinux denial, init service and APEX error events.
+- Outputs ordered event excerpts and repeated-event clusters with explicit limitations; input-line ordering is not causal proof, and teardown collateral may appear.
+- Added regression tests and CI. This is evidence extraction only—no patch generation or device modification.
