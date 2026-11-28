@@ -209,3 +209,11 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 
 - Added `tools/system_image_extract.py` to extract supported raw ext4/EROFS system images without mounting or writing to the image; it refuses unknown formats and non-empty destinations.
 - Added extraction guard tests and CI. Sparse/compressed input still requires normalization first; extraction fidelity must be verified and is not boot validation.
+
+
+#### Validation snapshot (2026-11-28)
+
+- Reversible property patch CI run `46121784821`: **success** (apply/rollback and hash-precondition tests).
+- System tree audit CI run `46121827554`: **success** (synthetic property-conflict, init-service, linker-config and inventory smoke test).
+- System-image extraction guard CI `46121859555`: **pending at this update**; not yet counted as passing.
+- Port-engine validation `46121827560`: **success** for commit `b7f20190` (existing engine validation; does not validate real ROM compatibility or image extraction).
