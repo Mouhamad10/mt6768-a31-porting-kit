@@ -18,4 +18,9 @@ class Compare(unittest.TestCase):
   row=r['shared_soname_abi_evidence'][0]
   self.assertEqual(len(row['target_paths']),2)
   self.assertEqual(row['abi_differences'],[])
+ def test_load_rejects_malformed_inventory(self):
+  import tempfile
+  with tempfile.NamedTemporaryFile(mode='w',suffix='.json') as fp:
+   fp.write('{"elf":[{"path":"x","needed":"not-a-list"}]}');fp.flush()
+   with self.assertRaises(ValueError):mod.load(fp.name)
 if __name__=='__main__':unittest.main()
