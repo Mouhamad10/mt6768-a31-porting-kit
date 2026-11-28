@@ -319,3 +319,12 @@ python3 tools/port_pipeline.py boot.log target-audit.json --donor-audit donor-au
 ```
 
 `--tree` is optional. Output remains review-only; no patch is generated or applied. See `tools/subsystem_intelligence.py` and its tests.
+
+
+## 2026-11-28 — Stages 10–12 hardening and CI
+
+- **Stage 10:** Hardened guarded property recipes against symlink targets and duplicate resolved targets; added backup collision preflight and backup-directory boundary checks; preserved file mode; attempted rollback on write failure. Added regression tests.
+- **Stage 11:** Read-only HAL/VINTF/vendor evidence scanner and regression coverage for manifest XML, init RC, linker configuration, SELinux policy and ELF inventory. Evidence is static and does not prove runtime integration.
+- **Stage 12:** Expanded filesystem validation for symlink escapes, dangling links, duplicate properties, hashes, and malformed init-line indicators. Result levels remain filesystem-only and do not represent boot validation.
+- **CI:** The Compatibility Engine tests and A31 Port Engine validation workflow passed on the tested commits; ELF audit comparison tests also passed. Confirmed workflow jobs succeeded.
+- **Limitations:** No real-GSI execution, Android boot test, ABI/linker namespace validation, HAL runtime test, or SELinux policy compilation is claimed.
