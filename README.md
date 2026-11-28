@@ -261,3 +261,8 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 ### 2026-11-28 — malformed ELF handling
 
 - Hardened the analyzer's `readelf` wrapper to treat nonzero tool exit status as a parse failure. Malformed/truncated ELF candidates are recorded under audit errors rather than silently producing incomplete ABI metadata. Regression test added earlier for this path; CI confirmation pending.
+
+
+### 2026-11-28 — reversible patch path-boundary regression test
+
+- Added a test ensuring the property patch helper rejects a symlink whose resolved target lies outside the extracted-tree root, before writing. The outside target is asserted unchanged. CI is pending.
