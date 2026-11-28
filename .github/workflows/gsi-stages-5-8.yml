@@ -1,0 +1,103 @@
+name: GSI Stages 5-8 (Experimental)
+on:
+  workflow_dispatch:
+    inputs:
+      gsi_url:
+        description: Direct URL to a system image or supported archive
+        required: true
+        type: string
+      label:
+        description: Artifact label
+        required: true
+        default: a31-port
+      density:
+        description: Optional target density (leave blank to skip)
+        required: false
+        default: "420"
+jobs:
+  staged-port:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y e2fsprogs erofs-utils f2fs-tools lz4 p7zip-full android-sdk-libsparse-utils zip
+      - name: Download bounded input
+        env:
+          GSI_URL: ${{ inputs.gsi_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          curl -fL --retry 3 --connect-timeout 30 --max-time 1200 --max-filesize 8589934592 -o work/input.bin "$GSI_URL"
+          test -s work/input.bin
+      - name: Normalize and extract into separate tree
+        run: |
+          set -euo pipefail
+          python3 tools/gsi_extract.py work/input.bin work/normalized --max-bytes 8589934592
+          python3 tools/system_image_extract.py work/normalized/system.img work/tree
+      - name: Stage 5 - apply bounded property recipe (opt-in density)
+        env:
+          DENSITY: ${{ inputs.density }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,json,hashlib
+          root=pathlib.Path('work/tree')
+          density=os.environ.get('DENSITY','').strip()
+          report={'stage':5,'recipe':'density property adjustment','density':density or None,'files_changed':[],'skipped':'density blank'}
+          if density:
+            if not density.isdigit() or not 100<=int(density)<=1000: raise SystemExit('density must be numeric between 100 and 1000')
+            for p in sorted(root.rglob('build.prop')):
+              if not p.is_file() or p.is_symlink(): continue
+              old=p.read_bytes()
+              try:text=old.decode('utf-8')
+              except UnicodeDecodeError:continue
+              lines=text.splitlines();new=[];found=False
+              for line in lines:
+                if line.strip().startswith('ro.sf.lcd_density='):
+                  if not found:new.append('ro.sf.lcd_density='+density);found=True
+                else:new.append(line)
+              if not found:new.append('ro.sf.lcd_density='+density)
+              out=('\n'.join(new)+'\n').encode()
+              if out!=old:
+                p.write_bytes(out);report['files_changed'].append({'path':str(p.relative_to(root)),'before_sha256':hashlib.sha256(old).hexdigest(),'after_sha256':hashlib.sha256(out).hexdigest()})
+            report.pop('skipped',None)
+          pathlib.Path('work/stage5-recipe-report.json').write_text(json.dumps(report,indent=2)+'\n')
+          PY
+      - name: Stage 6 - rebuild EROFS (standard LZ4)
+        run: |
+          set -euo pipefail
+          python3 tools/erofs_rebuild.py work/tree work/system-erofs.img --compression lz4
+      - name: Stage 7 - validation checks
+        run: |
+          set -euo pipefail
+          test -s work/system-erofs.img
+          fsck.erofs --check work/system-erofs.img
+          file work/system-erofs.img
+          sha256sum work/system-erofs.img | tee work/system.sha256
+          python3 tools/gsi_fs_inspect.py work/system-erofs.img --json work/fs-inspection.json > work/fs-inspection.txt
+          python3 tools/system_tree_audit.py work/tree --report work/tree-audit.json --props-report work/tree-audit.txt
+      - name: Stage 8 - package reproducibility evidence and artifact
+        env:
+          LABEL: ${{ inputs.label }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if ! [[ "$LABEL" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then echo "Invalid artifact label"; exit 1; fi
+          cp work/system-erofs.img dist/system.img
+          cp work/system.sha256 dist/
+          cp work/fs-inspection.json work/fs-inspection.txt work/stage5-recipe-report.json work/tree-audit.json work/tree-audit.txt dist/
+          cp work/normalized/extract-report.json dist/normalization-report.json
+          cat > dist/README.txt <<'EOF'
+          Experimental staged GSI processing output.
+          This is a filesystem rebuild artifact, NOT a device-tested ROM.
+          Extraction/rebuild may alter metadata and xattrs; inspect and test on-device only with a recovery plan.
+          No vendor/odm compatibility assessment and no boot validation were performed.
+          EOF
+          cd dist && zip -9 -r "${LABEL}-stages5-8.zip" . && cd ..
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.label }}-stages5-8
+          path: dist/*
