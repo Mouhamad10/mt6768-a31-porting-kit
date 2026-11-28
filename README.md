@@ -217,3 +217,11 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - System tree audit CI run `46121827554`: **success** (synthetic property-conflict, init-service, linker-config and inventory smoke test).
 - System-image extraction guard CI `46121859555`: **pending at this update**; not yet counted as passing.
 - Port-engine validation `46121827560`: **success** for commit `b7f20190` (existing engine validation; does not validate real ROM compatibility or image extraction).
+
+
+### 2026-11-28 — patch-engine preflight hardening
+
+- Property patch application now validates every operation and source hash before writing any target file; duplicate target-file operations are refused.
+- Writes use staged temporary files and replace, and failures during the write sequence trigger restoration of already-written targets.
+- Duplicate active assignments for the same property are collapsed into a single assignment while comment lines remain untouched; added regression tests for preflight refusal and duplicate keys.
+- These are extracted-tree operations only. Property semantics and device compatibility still require evidence and runtime validation.
