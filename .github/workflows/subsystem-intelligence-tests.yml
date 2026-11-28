@@ -1,0 +1,21 @@
+name: Subsystem Intelligence Tests
+on:
+  push:
+    paths:
+      - 'tools/subsystem_intelligence.py'
+      - 'tests/test_subsystem_intelligence.py'
+      - '.github/workflows/subsystem-intelligence-tests.yml'
+  pull_request:
+    paths:
+      - 'tools/subsystem_intelligence.py'
+      - 'tests/test_subsystem_intelligence.py'
+      - '.github/workflows/subsystem-intelligence-tests.yml'
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_subsystem_intelligence.py' -v
