@@ -19,6 +19,7 @@ on:
       gsi_url:
         description: "Direct URL to the GSI (.img / .img.xz / .gz / .lz4 / .zip / .7z)"
         required: true
+        default: "https://pixeldrain.com/api/file/k6mft1kM?download"
       label:
         description: "Short name for the output"
         default: "gsi"
@@ -57,7 +58,7 @@ jobs:
         run: |
           set -e
           mkdir -p work && cd work
-          URL='${{ github.event.inputs.gsi_url || 'https://altushost-swe.dl.sourceforge.net/project/mystic-gsi-updates/ColorOS/Coloros-OP5D77L1-14-1716613929462-AB-20260224-MysticGSI.zip?viasf=1&fid=4abd755aa983adfc&e=1795882397&st=tqK9fundeDJsKREdLkxeXA' }}'
+          URL='${{ github.event.inputs.gsi_url || 'https://pixeldrain.com/api/file/k6mft1kM?download' }}'
           echo "Fetching (not printing the URL/token)..."
           # SourceForge mirror downloads can stall or return a temporary HTML page.
           # Retry with explicit connection and overall timeouts; preserve diagnostics.
