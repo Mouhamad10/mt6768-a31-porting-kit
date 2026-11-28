@@ -274,3 +274,10 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 - Auto-apply is limited to recipe-backed property changes with exact SHA preconditions, path containment, and the existing rollback-capable transactional patcher. No recipe/no match means no modification.
 - Added tests for diagnosis/correlation, proposal vs apply + rollback, and stale recipe rejection; CI is currently running.
 - Scope caveat: this is not yet an autonomous source-level kernel/ELF/APEX/SELinux/init repair agent; it does not infer unknown stack-trace fixes or claim boot success.
+
+
+### 2026-11-28 — Port Engine guard hardening
+
+- Recipe parsing now rejects incomplete recipe records, path escapes, stale hashes, and duplicate target files before emitting/applying changes.
+- Added regression tests for recipe path symlink escape and duplicate target file ambiguity.
+- Prior engine commit CI completed successfully on the diagnosis, proposal/apply/rollback and stale-hash tests. The latest hardening/test commit CI is pending final confirmation.
