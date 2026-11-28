@@ -29,10 +29,10 @@ def validate(root):
     try:txt=p.read_text(errors='replace')
     except OSError:txt=''
     for i,line in enumerate(txt.splitlines(),1):
-     if re.match(r'\\s*(service|import)\\s+',line) and '\\x00' in line:findings.append({'severity':'error','kind':'invalid_init_line','path':rel,'line':i})
+     if re.match(r'\s*(service|import)\s+',line) and '\x00' in line:findings.append({'severity':'error','kind':'invalid_init_line','path':rel,'line':i})
   elif p.is_dir():counts['directories']+=1
  errors=sum(f['severity']=='error' for f in findings);warnings=sum(f['severity']=='warning' for f in findings)
  return {'schema':'a31-stage12-tree-validation-v1','tree':str(root),'counts':dict(counts),'findings':findings,'errors':errors,'warnings':warnings,'file_hash_manifest':hashes,'result':'FAIL' if errors else 'PASS_WITH_WARNINGS' if warnings else 'PASS','boot_test':'NOT_PERFORMED','image_build_test':'NOT_PERFORMED','scope':'filesystem tree sanity, symlink boundaries, and property inventory; not Android runtime validation'}
 def main():
- a=argparse.ArgumentParser();a.add_argument('tree');a.add_argument('--report',default='stage12-report.json');x=a.parse_args();r=validate(x.tree);pathlib.Path(x.report).write_text(json.dumps(r,indent=2)+'\\n');print(json.dumps(r,indent=2))
+ a=argparse.ArgumentParser();a.add_argument('tree');a.add_argument('--report',default='stage12-report.json');x=a.parse_args();r=validate(x.tree);pathlib.Path(x.report).write_text(json.dumps(r,indent=2)+'\n');print(json.dumps(r,indent=2))
 if __name__=='__main__':main()
