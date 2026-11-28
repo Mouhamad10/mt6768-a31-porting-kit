@@ -2,7 +2,7 @@ name: System tree audit tests
 on:
   push:
     branches: [main]
-    paths: [tools/system_tree_audit.py, tests/test_system_tree_audit.py, .github/workflows/system-tree-audit-tests.yml]
+    paths: [tools/system_tree_audit.py, tests/test_system_tree_audit.py, docs/system-tree-audit.md, .github/workflows/system-tree-audit-tests.yml]
   workflow_dispatch:
 jobs:
   smoke:
