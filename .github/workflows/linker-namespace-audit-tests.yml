@@ -1,0 +1,21 @@
+name: Linker Namespace Audit Tests
+on:
+  push:
+    paths:
+      - 'tools/linker_namespace_audit.py'
+      - 'tests/test_linker_namespace_audit.py'
+      - '.github/workflows/linker-namespace-audit-tests.yml'
+  pull_request:
+    paths:
+      - 'tools/linker_namespace_audit.py'
+      - 'tests/test_linker_namespace_audit.py'
+      - '.github/workflows/linker-namespace-audit-tests.yml'
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_linker_namespace_audit.py' -v
