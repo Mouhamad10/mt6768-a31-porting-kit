@@ -243,3 +243,9 @@ A new read-only tree analyzer (`tools/system_tree_audit.py`) inventories ELF dep
 
 - Added `tools/compare_system_audits.py` to compare analyzer JSON inventories: SONAME names missing from the donor, DT_NEEDED names missing from each inventory, and ABI metadata differences for shared SONAMEs.
 - Added regression tests and a dedicated Actions workflow. The report explicitly does not assess Android linker namespaces, symbol compatibility or boot/runtime compatibility. No libraries are copied or modified by the comparison.
+
+
+### 2026-11-28 — analyzer integrity correction
+
+- During a targeted source inspection after expanding ELF ABI collection, malformed generated Python text was detected in the analyzer. Replaced the affected analyzer body with a clean implementation and retained the ABI fields, read-only behavior, inventory and CLI outputs.
+- This was caught by source inspection before counting the expanded analyzer as validated. Awaiting fresh CI for the repair and the comparison utility.
