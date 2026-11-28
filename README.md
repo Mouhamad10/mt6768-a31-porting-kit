@@ -308,3 +308,14 @@ python3 tools/port_pipeline.py boot.log target-audit.json --donor-audit donor-au
 ```
 
 The donor audit is optional. Rankings are heuristic and do not establish causality. The pipeline does not generate or apply patches, alter ROM trees, or certify boot compatibility.
+
+
+## Subsystem intelligence (static, read-only)
+
+The unified evidence pipeline includes structured subsystem hints and can scan an extracted tree for VINTF XML and Android linker configuration inventory. This is inventory and triage only; it does not evaluate runtime compatibility.
+
+```bash
+python3 tools/port_pipeline.py boot.log target-audit.json --donor-audit donor-audit.json --tree extracted-target --json report.json --markdown report.md
+```
+
+`--tree` is optional. Output remains review-only; no patch is generated or applied. See `tools/subsystem_intelligence.py` and its tests.
