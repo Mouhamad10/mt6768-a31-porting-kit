@@ -32,4 +32,17 @@ class EngineTests(unittest.TestCase):
    base={'type':'set_property','trigger_signatures':['netbpf-load-fail'],'path':'props','expected_sha256':h}
    rec.write_text(json.dumps({'recipes':[dict(base,id='one',key='a',value='2'),dict(base,id='two',key='b',value='3')]}));d=self.run_engine(p,self.log(p),tree,rec)
    self.assertEqual(len(d['repair_candidates']),1);self.assertTrue(any('duplicate target' in x['reason'] for x in d['rejected_recipes']))
+
+ def test_exact_replacement_proposal_and_apply_rollback(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=pathlib.Path(td);tree=p/'tree';tree.mkdir();f=tree/'init.rc';f.write_text('service demo /system/bin/demo\\n    disabled\\n');h=hashlib.sha256(f.read_bytes()).hexdigest()
+   rec=p/'rec.json';rec.write_text(json.dumps({'recipes':[{'id':'replace','type':'replace_exact','trigger_signatures':['netbpf-load-fail'],'path':'init.rc','before_text':'    disabled\\n','after_text':'    oneshot\\n','expected_sha256':h}]}))
+   log=self.log(p);d=self.run_engine(p,log,tree,rec);self.assertEqual(f.read_text(),'service demo /system/bin/demo\\n    disabled\\n');self.assertEqual(d['repair_candidates'][0]['op'],'replace_exact')
+   self.run_engine(p,log,tree,rec,True);self.assertEqual(f.read_text(),'service demo /system/bin/demo\\n    oneshot\\n')
+   subprocess.run(['python3',str(ROOT/'tools/system_patch.py'),'rollback',str(tree),str(p/'rb.json')],check=True);self.assertIn('disabled',f.read_text())
+ def test_exact_replacement_ambiguous_rejected(self):
+  with tempfile.TemporaryDirectory() as td:
+   p=pathlib.Path(td);tree=p/'tree';tree.mkdir();f=tree/'rc';f.write_text('x\\nx\\n');h=hashlib.sha256(f.read_bytes()).hexdigest();rec=p/'rec.json'
+   rec.write_text(json.dumps({'recipes':[{'id':'amb','type':'replace_exact','trigger_signatures':['netbpf-load-fail'],'path':'rc','before_text':'x\\n','after_text':'y\\n','expected_sha256':h}]}))
+   d=self.run_engine(p,self.log(p),tree,rec);self.assertFalse(d['repair_candidates']);self.assertTrue(d['rejected_recipes'])
 if __name__=='__main__':unittest.main()
