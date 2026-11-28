@@ -56,16 +56,16 @@ def analyze(path, limit=LIMIT):
             "compatibility":"not_assessed","modifications":"none","device_boot_test":"not_performed"}
 
 def markdown(r):
-    lines=["# GSI intake report","",f"- File: \`{r['file']}\`",
-           f"- Size: {r['size_bytes']} bytes",f"- SHA-256: \`{r['sha256']}\`",
+    lines=["# GSI intake report","",f"- File: `{r['file']}`",
+           f"- Size: {r['size_bytes']} bytes",f"- SHA-256: `{r['sha256']}`",
            f"- Payload type: **{r['type']}**",f"- Compatibility: **not assessed**",
            "- This intake stage does not modify or extract the input.",""]
     if r["system_image_candidates"]:
-        lines += ["## Candidate system images",""]+[f"- \`{m['name']}\` ({m['size']} bytes)" for m in r["system_image_candidates"]]
+        lines += ["## Candidate system images",""]+[f"- `{m['name']}` ({m['size']} bytes)" for m in r["system_image_candidates"]]
     if r["archive_members"]:
-        lines += ["","## Archive inventory (up to 2000 files)",""]+[f"- \`{m['name']}\` ({m['size']} bytes)" for m in r["archive_members"]]
+        lines += ["","## Archive inventory (up to 2000 files)",""]+[f"- `{m['name']}` ({m['size']} bytes)" for m in r["archive_members"]]
     lines += ["","## Next stage","", "Extraction, filesystem editing, repacking and device validation are separate stages and have not been performed."]
-    return "\\n".join(lines)+"\\n"
+    return "\n".join(lines)+"\n"
 
 if __name__=="__main__":
     ap=argparse.ArgumentParser()
@@ -73,6 +73,6 @@ if __name__=="__main__":
     args=ap.parse_args()
     r=analyze(args.input)
     d=pathlib.Path(args.out_dir); d.mkdir(parents=True,exist_ok=True)
-    (d/"gsi-report.json").write_text(json.dumps(r,indent=2)+"\\n")
+    (d/"gsi-report.json").write_text(json.dumps(r,indent=2)+"\n")
     (d/"gsi-report.md").write_text(markdown(r))
     print(json.dumps(r,indent=2))
