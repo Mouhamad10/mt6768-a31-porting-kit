@@ -30,6 +30,10 @@ def atomic_write(p,b):
   try:os.unlink(tmp)
   except OSError:pass
   raise
+def replace_exact(old,before_text,after_text):
+ text=old.decode('utf-8')
+ if text.count(before_text)!=1:raise ValueError('before_text must occur exactly once')
+ return text.replace(before_text,after_text,1).encode('utf-8')
 def apply(root,patch,manifest):
  root=pathlib.Path(root).resolve();data=json.loads(pathlib.Path(patch).read_text())
  if data.get('schema')!='a31-system-patch-v1':raise ValueError('unsupported patch schema')
@@ -37,14 +41,18 @@ def apply(root,patch,manifest):
  if not ops:raise ValueError('patch contains no operations')
  staged=[];seen=set()
  for op in ops:
-  if op.get('op')!='set_property':raise ValueError('unsupported operation')
-  key=op.get('key','')
-  if not re.fullmatch(r'[A-Za-z0-9_.-]+',key):raise ValueError('invalid property key')
+  kind=op.get('op')
+  if kind not in ('set_property','replace_exact'):raise ValueError('unsupported operation')
+  if kind=='set_property':
+   key=op.get('key','')
+   if not re.fullmatch(r'[A-Za-z0-9_.-]+',key):raise ValueError('invalid property key')
+  elif not isinstance(op.get('before_text'),str) or not isinstance(op.get('after_text'),str) or not op['before_text'] or op['before_text']==op['after_text']:raise ValueError('invalid exact replacement fields')
   p=safe(root,op['path'])
   if p in seen:raise ValueError('multiple operations target same file; combine them')
   seen.add(p);old=p.read_bytes()
   if digest(old)!=op.get('expected_sha256'):raise ValueError('hash precondition failed: '+op['path'])
-  staged.append({'path':op['path'],'file':p,'before':old,'after':transform(old,key,str(op['value']))})
+  after=transform(old,key,str(op['value'])) if kind=='set_property' else replace_exact(old,op['before_text'],op['after_text'])
+  staged.append({'path':op['path'],'file':p,'before':old,'after':after})
  written=[]
  try:
   for item in staged:atomic_write(item['file'],item['after']);written.append(item)
